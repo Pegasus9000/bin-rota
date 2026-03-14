@@ -41,10 +41,15 @@ function getDB() {
   return _db;
 }
 
+function getTurnCount(history, personId) {
+  // Count unique turns (by turnId) — excludes outOfTurn entries
+  const rota = history.filter(h => !h.outOfTurn && h.personId === personId);
+  return new Set(rota.map(h => h.turnId || h.id)).size;
+}
 function getNextPersonIndex(history, residents) {
   const active = residents.filter((r) => r.active);
   if (!active.length) return -1;
-  const counts = active.map((r) => ({ id: r.id, count: history.filter((h) => h.personId === r.id).length }));
+  const counts = active.map((r) => ({ id: r.id, count: getTurnCount(history, r.id) }));
   counts.sort((a, b) => a.count - b.count);
   return residents.findIndex((r) => r.id === counts[0].id);
 }
@@ -149,6 +154,8 @@ export default function BinRota() {
   const [showPin,setShowPin]=useState(false);
   const [pendingAction,setPendingAction]=useState(null);
   const [showReportPicker,setShowReportPicker]=useState(null);
+  const [showBinPicker,setShowBinPicker]=useState(false);
+  const [showWhoAreYou,setShowWhoAreYou]=useState(false);
 
   const stateRef=useRef({residents,history,alerts,schedule});
   stateRef.current={residents,history,alerts,schedule};
@@ -214,14 +221,51 @@ export default function BinRota() {
   }
   function copyText(text,setCopied){navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);}).catch(()=>{});}
 
-  function markEmptied(binTypeId){
-    if(!currentPerson)return;
-    const entry={id:Date.now(),personId:currentPerson.id,personName:currentPerson.name,binType:binTypeId,date:new Date().toLocaleDateString("en-GB"),ts:Date.now()};
-    saveState({history:[entry,...history].slice(0,100),alerts:alerts.filter(a=>a.binType!==binTypeId)});
+  // Called with confirmed person + bin selection
+  function doMarkEmptied(person, binTypeIds, outOfTurn=false){
+    const turnId = Date.now();
+    const newAlerts = alerts.filter(a => !binTypeIds.includes(a.binType));
+    const entries = binTypeIds.map((binTypeId, i) => ({
+      id: turnId + i, turnId,
+      personId: person.id, personName: person.name,
+      binType: binTypeId,
+      date: new Date().toLocaleDateString("en-GB"),
+      ts: turnId,
+      ...(outOfTurn ? {outOfTurn: true} : {}),
+    }));
+    saveState({history:[...entries,...history].slice(0,100), alerts: newAlerts});
     if(justDoneTimer.current)clearTimeout(justDoneTimer.current);
-    setJustDone({binTypeId,personName:currentPerson.name,upNextName:upNext?.name||null});
+    setJustDone({binTypeIds, personName: person.name, upNextName: outOfTurn ? null : upNext?.name||null});
     setDoneCopied(false);
     justDoneTimer.current=setTimeout(()=>setJustDone(null),8000);
+  }
+
+  // Tap bin button — open pickers
+  function handleBinTap(){
+    if(!currentPerson) return;
+    setShowBinPicker(true);
+  }
+
+  // Called after bin picker: check if tapper is current person or someone else
+  function onBinPickerDone(binTypeIds){
+    setShowBinPicker(false);
+    if(!binTypeIds.length) return;
+    // Ask who they are — always, so we know if it is out of turn
+    setShowWhoAreYou({binTypeIds});
+  }
+
+  // Final step: person confirmed
+  function onWhoAreYouDone(person, binTypeIds){
+    setShowWhoAreYou(false);
+    if(!person) return;
+    const outOfTurn = currentPerson && person.id !== currentPerson.id;
+    doMarkEmptied(person, binTypeIds, outOfTurn);
+  }
+
+  // Quick path for alert-based emptying (already know person = current)
+  function markEmptied(binTypeId){
+    if(!currentPerson) return;
+    doMarkEmptied(currentPerson, [binTypeId], false);
   }
   function reportFull(binTypeId,reporterName){
     const bin=BIN_TYPES.find(b=>b.id===binTypeId);if(!bin)return;
@@ -303,6 +347,56 @@ export default function BinRota() {
 
       {showPin&&<PinModal onSuccess={onPinSuccess} onCancel={()=>{setShowPin(false);setPendingAction(null);}} T={T}/>}
       {showReportPicker&&<ReportPicker binTypeId={showReportPicker}/>}
+
+      {/* WHICH BINS? PICKER */}
+      {showBinPicker&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{background:T.bgCard,borderRadius:"20px",padding:"24px",width:"100%",maxWidth:"320px",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:"28px",textAlign:"center",marginBottom:"6px"}}>🗑️</div>
+            <div style={{fontSize:"17px",fontWeight:"700",textAlign:"center",marginBottom:"4px",color:T.text}}>Which bins did you empty?</div>
+            <div style={{fontSize:"13px",color:T.textFaint,textAlign:"center",marginBottom:"16px"}}>Select all that apply</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+              <button className="btn" onClick={()=>onBinPickerDone(["general","recycling"])} style={{padding:"14px 16px",fontSize:"15px",fontWeight:"600",background:T.currentAccent,color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"12px"}}>
+                <span style={{fontSize:"22px"}}>🗑️♻️</span><span>Both bins</span>
+              </button>
+              <button className="btn" onClick={()=>onBinPickerDone(["general"])} style={{padding:"14px 16px",fontSize:"15px",fontWeight:"500",background:T.bgCard2,color:T.text,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:"12px"}}>
+                <span style={{fontSize:"22px"}}>🗑️</span><span>General Waste only</span>
+              </button>
+              <button className="btn" onClick={()=>onBinPickerDone(["recycling"])} style={{padding:"14px 16px",fontSize:"15px",fontWeight:"500",background:T.bgCard2,color:T.text,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:"12px"}}>
+                <span style={{fontSize:"22px"}}>♻️</span><span>Recycling only</span>
+              </button>
+            </div>
+            <button className="btn" onClick={()=>setShowBinPicker(false)} style={{width:"100%",marginTop:"12px",background:T.bgCard2,color:T.textMuted,padding:"11px",fontSize:"14px",border:`1px solid ${T.border}`}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* WHO ARE YOU? PICKER */}
+      {showWhoAreYou&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{background:T.bgCard,borderRadius:"20px",padding:"24px",width:"100%",maxWidth:"320px",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:"28px",textAlign:"center",marginBottom:"6px"}}>👤</div>
+            <div style={{fontSize:"17px",fontWeight:"700",textAlign:"center",marginBottom:"4px",color:T.text}}>Who are you?</div>
+            <div style={{fontSize:"13px",color:T.textFaint,textAlign:"center",marginBottom:"16px"}}>
+              {currentPerson ? `It's ${currentPerson.name}'s turn — are you them?` : "Select your name"}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"8px",maxHeight:"260px",overflowY:"auto"}}>
+              {residents.filter(r=>r.active).map(r=>{
+                const isCurrent = r.id === currentPerson?.id;
+                return(
+                  <button key={r.id} className="btn" onClick={()=>onWhoAreYouDone(r, showWhoAreYou.binTypeIds)}
+                    style={{padding:"12px 16px",fontSize:"15px",fontWeight: isCurrent?"700":"500",background: isCurrent?T.currentAccent:T.bgCard2,color: isCurrent?"#fff":T.text,border:`1.5px solid ${isCurrent?T.currentAccent:T.border}`,textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    {r.name}
+                    {isCurrent&&<span style={{fontSize:"12px",opacity:0.85}}>It's your turn ✓</span>}
+                    {!isCurrent&&<span style={{fontSize:"12px",color:T.textFaint}}>Not your turn</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <button className="btn" onClick={()=>setShowWhoAreYou(false)} style={{width:"100%",marginTop:"12px",background:T.bgCard2,color:T.textMuted,padding:"11px",fontSize:"14px",border:`1px solid ${T.border}`}}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* HEADER */}
       <div style={{background:T.bgCard,borderBottom:`1px solid ${T.border}`,padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
@@ -411,7 +505,7 @@ export default function BinRota() {
               <div style={sectionLabel}>✅ Tap when you empty a bin</div>
               <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
                 {BIN_TYPES.map(bin=>{
-                  const isDoneThis=justDone?.binTypeId===bin.id;
+                  const isDoneThis=justDone?.binTypeIds?.includes(bin.id);
                   const alert=alerts.find(a=>a.binType===bin.id);
                   const isFull=!!alert;
                   const isUrgent=isFull&&alert.reports?.length>=REPORTS_TO_URGENT;
@@ -435,7 +529,7 @@ export default function BinRota() {
                     );
                   }
                   return(
-                    <button key={bin.id} className="btn" onClick={()=>markEmptied(bin.id)} disabled={!currentPerson} style={{width:"100%",borderRadius:"18px",border:"none",background:isUrgent?"linear-gradient(135deg,#ff6b00,#e65100)":isFull?"linear-gradient(135deg,#ff3b30,#c0392b)":isDark?"linear-gradient(135deg,#30d158,#28a745)":"linear-gradient(135deg,#34c759,#2dbe55)",display:"flex",alignItems:"center",overflow:"hidden",boxShadow:isFull?"0 4px 20px rgba(255,59,48,0.4)":"0 4px 20px rgba(52,199,89,0.35)"}}>
+                    <button key={bin.id} className="btn" onClick={handleBinTap} disabled={!currentPerson} style={{width:"100%",borderRadius:"18px",border:"none",background:isUrgent?"linear-gradient(135deg,#ff6b00,#e65100)":isFull?"linear-gradient(135deg,#ff3b30,#c0392b)":isDark?"linear-gradient(135deg,#30d158,#28a745)":"linear-gradient(135deg,#34c759,#2dbe55)",display:"flex",alignItems:"center",overflow:"hidden",boxShadow:isFull?"0 4px 20px rgba(255,59,48,0.4)":"0 4px 20px rgba(52,199,89,0.35)"}}>
                       <div style={{width:"72px",height:"72px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"32px",background:"rgba(0,0,0,0.12)",flexShrink:0}}>{bin.emoji}</div>
                       <div style={{flex:1,textAlign:"left",paddingLeft:"16px"}}>
                         <div style={{fontSize:"11px",fontWeight:"600",color:"rgba(255,255,255,0.75)",textTransform:"uppercase",marginBottom:"2px"}}>{isUrgent?"🚨 URGENT — Tap to confirm":isFull?"⚠️ Reported Full — Tap to confirm":"Tap when emptied"}</div>
