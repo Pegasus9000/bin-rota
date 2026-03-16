@@ -159,21 +159,23 @@ export default function BinRota() {
 
   const stateRef=useRef({residents,history,alerts,schedule});
   stateRef.current={residents,history,alerts,schedule};
-  const skipNextSnapshot=useRef(false);
+  const lastWriteId=useRef(null);
   const justDoneTimer=useRef(null);
 
   useEffect(()=>{
     let db; try{db=getDB();}catch(e){setConnStatus("error");return;}
     const dbRef=ref(db,DB_PATH);
     const unsub=onValue(dbRef,(snapshot)=>{
-      if(skipNextSnapshot.current){skipNextSnapshot.current=false;return;}
       const data=snapshot.val();
-      if(data){
-        if(Array.isArray(data.residents)&&data.residents.length>0)setResidents(data.residents);
-        if(Array.isArray(data.history))setHistory(data.history);
-        if(Array.isArray(data.alerts))setAlerts(data.alerts);
-        if(data.schedule&&typeof data.schedule==="object")setSchedule(data.schedule);
+      if(!data){setConnStatus("live");return;}
+      // Only skip if this snapshot is OUR own last write — never skip a flatmate's update
+      if(data._writeId && data._writeId===lastWriteId.current){
+        setConnStatus("live");return;
       }
+      if(Array.isArray(data.residents)&&data.residents.length>0)setResidents(data.residents);
+      if(Array.isArray(data.history))setHistory(data.history);
+      if(Array.isArray(data.alerts))setAlerts(data.alerts);
+      if(data.schedule&&typeof data.schedule==="object")setSchedule(data.schedule);
       setConnStatus("live");
     },(e)=>{console.error(e);setConnStatus("error");});
     return()=>off(dbRef,"value",unsub);
@@ -183,8 +185,10 @@ export default function BinRota() {
 
   function saveState(patch){
     const next={...stateRef.current,...patch};
-    skipNextSnapshot.current=true;
-    try{set(ref(getDB(),DB_PATH),next);}catch(e){skipNextSnapshot.current=false;}
+    const writeId=Math.random().toString(36).slice(2)+Date.now();
+    lastWriteId.current=writeId;
+    next._writeId=writeId;
+    try{set(ref(getDB(),DB_PATH),next);}catch(e){lastWriteId.current=null;}
     if(patch.residents!==undefined)setResidents(patch.residents);
     if(patch.history!==undefined)setHistory(patch.history);
     if(patch.alerts!==undefined)setAlerts(patch.alerts);
@@ -770,7 +774,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.5</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.6</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
