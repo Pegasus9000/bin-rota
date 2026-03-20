@@ -660,7 +660,7 @@ export default function BinRota() {
                       <div style={{fontSize:"12px",color:isUrgent?T.urgentText:isFull?T.alertText:T.currentAccent,fontWeight:"600",marginBottom:"10px"}}>{isUrgent?"🚨 URGENT":isFull?`⚠️ ${rc} report${rc>1?"s":""}`:"● OK"}</div>
                       {!isFull
                         ?<button className="btn" onClick={()=>{
-                            if(window.confirm(`Report ${bin.label} as full?\n\nThis will alert everyone. Only confirm if the bin genuinely needs emptying.`))
+                            if(window.confirm("Report " + bin.label + " as full?\n\nThis will alert everyone. Only confirm if the bin genuinely needs emptying."))
                               setShowReportPicker(bin.id);
                           }} style={{background:T.bgCard2,color:T.textMuted,padding:"7px",fontSize:"12px",width:"100%",border:`1px solid ${T.border}`}}>Report Full</button>
                         :<button className="btn" onClick={()=>markEmptied(bin.id)} style={{background:isUrgent?T.urgentText:T.alertText,color:"#fff",padding:"7px",fontSize:"12px",width:"100%",fontWeight:"700"}}>Mark Emptied</button>
