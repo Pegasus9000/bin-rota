@@ -156,6 +156,8 @@ export default function BinRota() {
   const [showReportPicker,setShowReportPicker]=useState(null);
   const [showBinPicker,setShowBinPicker]=useState(false);
   const [showWhoAreYou,setShowWhoAreYou]=useState(false);
+  // Skip confirmation: {person, binTypeIds} — shown when someone empties out of turn
+  const [showSkipConfirm,setShowSkipConfirm]=useState(null);
 
   const stateRef=useRef({residents,history,alerts,schedule});
   stateRef.current={residents,history,alerts,schedule};
@@ -244,6 +246,14 @@ export default function BinRota() {
     justDoneTimer.current=setTimeout(()=>setJustDone(null),8000);
   }
 
+  // Add a synthetic skipped entry so rota advances past this person fairly
+  function skipPersonTurn(person){
+    const turnId=Date.now()+9999;
+    const entry={id:turnId,turnId,personId:person.id,personName:person.name,
+      binType:"skipped",skipped:true,date:new Date().toLocaleDateString("en-GB"),ts:turnId};
+    saveState({history:[entry,...stateRef.current.history].slice(0,100)});
+  }
+
   // Tap bin button — open pickers
   function handleBinTap(){
     if(!currentPerson) return;
@@ -263,7 +273,13 @@ export default function BinRota() {
     setShowWhoAreYou(false);
     if(!person) return;
     const outOfTurn = currentPerson && person.id !== currentPerson.id;
-    doMarkEmptied(person, binTypeIds, outOfTurn);
+    if(outOfTurn){
+      // Ask if they want to skip the current person too
+      doMarkEmptied(person, binTypeIds, true);
+      setShowSkipConfirm({skippedPerson: currentPerson, coveredBy: person});
+    } else {
+      doMarkEmptied(person, binTypeIds, false);
+    }
   }
 
   // Quick path for alert-based emptying (already know person = current)
@@ -398,6 +414,35 @@ export default function BinRota() {
               })}
             </div>
             <button className="btn" onClick={()=>setShowWhoAreYou(false)} style={{width:"100%",marginTop:"12px",background:T.bgCard2,color:T.textMuted,padding:"11px",fontSize:"14px",border:`1px solid ${T.border}`}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* SKIP CONFIRM MODAL */}
+      {showSkipConfirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{background:T.bgCard,borderRadius:"20px",padding:"28px 24px",width:"100%",maxWidth:"340px",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:"36px",textAlign:"center",marginBottom:"8px"}}>⏭️</div>
+            <div style={{fontSize:"17px",fontWeight:"700",textAlign:"center",color:T.text,marginBottom:"10px"}}>
+              Skip {showSkipConfirm.skippedPerson.name}'s turn?
+            </div>
+            <div style={{fontSize:"14px",color:T.textMuted,textAlign:"center",lineHeight:"1.6",marginBottom:"20px"}}>
+              <span style={{fontWeight:"600",color:T.text}}>{showSkipConfirm.coveredBy.name}</span> just emptied the bins,
+              but it was <span style={{fontWeight:"600",color:T.text}}>{showSkipConfirm.skippedPerson.name}'s</span> turn.
+              <br/><br/>Skip their turn so the rota stays fair?
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+              <button className="btn" onClick={()=>{
+                skipPersonTurn(showSkipConfirm.skippedPerson);
+                setShowSkipConfirm(null);
+              }} style={{padding:"14px",fontSize:"15px",fontWeight:"700",background:T.currentAccent,color:"#fff",border:"none"}}>
+                ✅ Yes — skip {showSkipConfirm.skippedPerson.name}'s turn
+              </button>
+              <button className="btn" onClick={()=>setShowSkipConfirm(null)}
+                style={{padding:"14px",fontSize:"15px",fontWeight:"500",background:T.bgCard2,color:T.textMuted,border:`1px solid ${T.border}`}}>
+                No — keep {showSkipConfirm.skippedPerson.name} as current
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -774,7 +819,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.6</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.7</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
