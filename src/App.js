@@ -163,6 +163,8 @@ export default function BinRota() {
   // Skip confirmation: {person, binTypeIds} — shown when someone empties out of turn
   const [showSkipConfirm,setShowSkipConfirm]=useState(null);
   const [showHelp,setShowHelp]=useState(false);
+  const [forcedCurrentId,setForcedCurrentId]=useState(null);
+  const [showFairnessStats,setShowFairnessStats]=useState(false);
 
   const stateRef=useRef({residents,history,alerts,schedule});
   stateRef.current={residents,history,alerts,schedule};
