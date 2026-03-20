@@ -46,7 +46,11 @@ function getTurnCount(history, personId) {
   const rota = history.filter(h => !h.outOfTurn && h.personId === personId);
   return new Set(rota.map(h => h.turnId || h.id)).size;
 }
-function getNextPersonIndex(history, residents) {
+function getNextPersonIndex(history, residents, forcedId=null) {
+  if (forcedId !== null) {
+    const fi = residents.findIndex(r => r.id === forcedId && r.active);
+    if (fi >= 0) return fi;
+  }
   const active = residents.filter((r) => r.active);
   if (!active.length) return -1;
   const counts = active.map((r) => ({ id: r.id, count: getTurnCount(history, r.id) }));
@@ -158,6 +162,7 @@ export default function BinRota() {
   const [showWhoAreYou,setShowWhoAreYou]=useState(false);
   // Skip confirmation: {person, binTypeIds} — shown when someone empties out of turn
   const [showSkipConfirm,setShowSkipConfirm]=useState(null);
+  const [showHelp,setShowHelp]=useState(false);
 
   const stateRef=useRef({residents,history,alerts,schedule});
   stateRef.current={residents,history,alerts,schedule};
@@ -200,7 +205,7 @@ export default function BinRota() {
   function requireAdmin(fn){if(isAdmin){fn();return;}setPendingAction(()=>fn);setShowPin(true);}
   function onPinSuccess(){setIsAdmin(true);setShowPin(false);if(pendingAction){pendingAction();setPendingAction(null);}}
 
-  const currentPersonIdx=getNextPersonIndex(history,residents);
+  const currentPersonIdx=getNextPersonIndex(history,residents,forcedCurrentId);
   const currentPerson=currentPersonIdx>=0?residents[currentPersonIdx]:null;
   const activeResidents=residents.filter(r=>r.active);
   const currentActiveIdx=currentPerson?activeResidents.findIndex(r=>r.id===currentPerson.id):-1;
@@ -240,11 +245,14 @@ export default function BinRota() {
       ...(outOfTurn ? {outOfTurn: true} : {}),
     }));
     saveState({history:[...entries,...history].slice(0,100), alerts: newAlerts});
+    clearForcedAfterEmpty();
     if(justDoneTimer.current)clearTimeout(justDoneTimer.current);
     setJustDone({binTypeIds, personName: person.name, upNextName: outOfTurn ? null : upNext?.name||null});
     setDoneCopied(false);
     justDoneTimer.current=setTimeout(()=>setJustDone(null),8000);
   }
+
+  function clearForcedAfterEmpty(){ setForcedCurrentId(null); }
 
   // Add a synthetic skipped entry so rota advances past this person fairly
   function skipPersonTurn(person){
@@ -376,6 +384,7 @@ export default function BinRota() {
             <div style={{fontSize:"17px",fontWeight:"700",textAlign:"center",marginBottom:"4px",color:T.text}}>Which bins did you empty?</div>
             <div style={{fontSize:"13px",color:T.textFaint,textAlign:"center",marginBottom:"16px"}}>Select all that apply</div>
             <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+              <div style={{fontSize:"12px",color:T.textFaint,textAlign:"center",marginBottom:"6px",lineHeight:1.5}}>Select which bins you emptied.<br/>This counts as your turn in the rota.</div>
               <button className="btn" onClick={()=>onBinPickerDone(["general","recycling"])} style={{padding:"14px 16px",fontSize:"15px",fontWeight:"600",background:T.currentAccent,color:"#fff",border:"none",display:"flex",alignItems:"center",gap:"12px"}}>
                 <span style={{fontSize:"22px"}}>🗑️♻️</span><span>Both bins</span>
               </button>
@@ -436,12 +445,47 @@ export default function BinRota() {
                 skipPersonTurn(showSkipConfirm.skippedPerson);
                 setShowSkipConfirm(null);
               }} style={{padding:"14px",fontSize:"15px",fontWeight:"700",background:T.currentAccent,color:"#fff",border:"none"}}>
-                ✅ Yes — skip {showSkipConfirm.skippedPerson.name}'s turn
+                ✅ Yes — skip their turn
               </button>
+              <div style={{fontSize:"11px",color:T.textFaint,textAlign:"center",padding:"0 4px",lineHeight:1.5}}>
+                Their turn counts as done and the rota moves forward.
+              </div>
               <button className="btn" onClick={()=>setShowSkipConfirm(null)}
                 style={{padding:"14px",fontSize:"15px",fontWeight:"500",background:T.bgCard2,color:T.textMuted,border:`1px solid ${T.border}`}}>
                 No — keep {showSkipConfirm.skippedPerson.name} as current
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HELP MODAL */}
+      {showHelp&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:110,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowHelp(false)}>
+          <div style={{background:T.bgCard,borderRadius:"24px 24px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:"480px",maxHeight:"85vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}}>
+              <div style={{fontSize:"20px",fontWeight:"700",color:T.text}}>How to use Bin Rota</div>
+              <button className="btn" onClick={()=>setShowHelp(false)} style={{background:T.bgCard2,border:`1px solid ${T.border}`,color:T.textMuted,padding:"6px 12px",fontSize:"15px"}}>✕</button>
+            </div>
+            {[
+              {icon:"👤",title:"Whose turn is it?",body:"Open the Rota tab. The big green card shows whose turn it is. You can also see who is up next."},
+              {icon:"✅",title:"I just emptied the bins",body:"Tap the big green button. It will ask which bins you emptied (one or both), then ask your name. Once confirmed, your turn is logged and the rota moves on automatically."},
+              {icon:"🗑️",title:"The bin is full but not your turn",body:"Go to Bin Status and tap Report Full. Pick your name. If 2 people report the same bin, an urgent alert appears for everyone with a WhatsApp message ready to send."},
+              {icon:"⏭️",title:"Someone emptied it but it was not their turn",body:"Select your name when asked. The app will ask if the person whose turn it was should be skipped — tap Yes to keep the rota fair."},
+              {icon:"✈️",title:"Going away?",body:"Go to the Residents tab and toggle your name off. You will be skipped in the rota until you turn it back on."},
+              {icon:"💬",title:"Send a WhatsApp reminder",body:"On the Rota tab, tap Nudge to send a message to the current person. Or tap WhatsApp Update to send the full rota status to the group."},
+              {icon:"🔐",title:"Admin access",body:"Admin can add or remove people, manually set whose turn it is, view fairness stats, and reset the rota. Ask Yassine for the PIN."},
+            ].map((step,i)=>(
+              <div key={i} style={{display:"flex",gap:"14px",marginBottom:"20px",alignItems:"flex-start"}}>
+                <div style={{fontSize:"26px",flexShrink:0,width:"36px",textAlign:"center",marginTop:"2px"}}>{step.icon}</div>
+                <div>
+                  <div style={{fontSize:"15px",fontWeight:"700",color:T.text,marginBottom:"4px"}}>{step.title}</div>
+                  <div style={{fontSize:"14px",color:T.textMuted,lineHeight:"1.6"}}>{step.body}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{marginTop:"4px",padding:"14px",background:T.bgCard2,borderRadius:"12px",fontSize:"12px",color:T.textFaint,textAlign:"center",lineHeight:1.6}}>
+              The app syncs in real time — any change appears on everyone's phone instantly. ✅
             </div>
           </div>
         </div>
@@ -456,6 +500,7 @@ export default function BinRota() {
         <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <div style={{width:"8px",height:"8px",borderRadius:"50%",background:statusDot}}/>
           <div style={{fontSize:"12px",color:statusDot,fontWeight:"500"}}>{statusText}</div>
+          <button className="btn" onClick={()=>setShowHelp(true)} style={{background:T.bgCard2,border:`1px solid ${T.border}`,padding:"5px 11px",fontSize:"15px",fontWeight:"700",color:T.textMuted,lineHeight:1}}>?</button>
           <button className="btn" onClick={toggleTheme} style={{background:T.bgCard2,border:`1px solid ${T.border}`,padding:"5px 10px",fontSize:"16px",lineHeight:1}}>{isDark?"☀️":"🌙"}</button>
           {isAdmin&&<button className="btn" onClick={()=>setIsAdmin(false)} style={{background:T.adminBg,border:`1px solid ${T.adminBorder}`,color:T.adminText,padding:"4px 10px",fontSize:"11px",fontWeight:"700"}}>ADMIN ✕</button>}
         </div>
@@ -526,6 +571,14 @@ export default function BinRota() {
         {/* ROTA TAB */}
         {activeTab==="rota"&&(
           <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:"16px"}}>
+
+            {/* Admin: forced current person notice */}
+            {forcedCurrentId&&isAdmin&&(
+              <div style={{background:T.adminBg,border:`1px solid ${T.adminBorder}`,borderRadius:"12px",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px"}}>
+                <div style={{fontSize:"13px",color:T.adminText}}>🔐 Turn manually set by admin</div>
+                <button className="btn" onClick={()=>setForcedCurrentId(null)} style={{background:"transparent",color:T.adminText,fontSize:"12px",fontWeight:"600",padding:"4px 8px",border:`1px solid ${T.adminBorder}`}}>Clear</button>
+              </div>
+            )}
 
             {currentPerson?(
               <div style={{background:T.currentBg,border:`1.5px solid ${T.currentBorder}`,borderRadius:"20px",padding:"20px 22px"}}>
@@ -606,7 +659,10 @@ export default function BinRota() {
                       <div style={{fontSize:"14px",fontWeight:"600",marginBottom:"2px"}}>{bin.label}</div>
                       <div style={{fontSize:"12px",color:isUrgent?T.urgentText:isFull?T.alertText:T.currentAccent,fontWeight:"600",marginBottom:"10px"}}>{isUrgent?"🚨 URGENT":isFull?`⚠️ ${rc} report${rc>1?"s":""}`:"● OK"}</div>
                       {!isFull
-                        ?<button className="btn" onClick={()=>setShowReportPicker(bin.id)} style={{background:T.bgCard2,color:T.textMuted,padding:"7px",fontSize:"12px",width:"100%",border:`1px solid ${T.border}`}}>Report Full</button>
+                        ?<button className="btn" onClick={()=>{
+                            if(window.confirm(`Report ${bin.label} as full?\n\nThis will alert everyone. Only confirm if the bin genuinely needs emptying.`))
+                              setShowReportPicker(bin.id);
+                          }} style={{background:T.bgCard2,color:T.textMuted,padding:"7px",fontSize:"12px",width:"100%",border:`1px solid ${T.border}`}}>Report Full</button>
                         :<button className="btn" onClick={()=>markEmptied(bin.id)} style={{background:isUrgent?T.urgentText:T.alertText,color:"#fff",padding:"7px",fontSize:"12px",width:"100%",fontWeight:"700"}}>Mark Emptied</button>
                       }
                     </div>
@@ -651,7 +707,7 @@ export default function BinRota() {
                 <div>
                   <div style={{fontSize:"13px",color:T.textFaint,marginBottom:"8px",fontWeight:"500"}}>Frequency</div>
                   <div style={{display:"flex",gap:"6px"}}>
-                    {[3,7,14].map(n=><button key={n} className="btn" onClick={()=>saveState({schedule:{...schedule,frequencyDays:n}})} style={{padding:"6px 14px",fontSize:"13px",fontWeight:schedule.frequencyDays===n?"600":"400",background:schedule.frequencyDays===n?T.text:T.bgCard2,color:schedule.frequencyDays===n?T.bg:T.textMuted,border:`1px solid ${schedule.frequencyDays===n?T.text:T.border}`}}>{n===3?"3 days":n===7?"Weekly":"Fortnightly"}</button>)}
+                    {[{v:3.5,l:"Twice/week"},{v:3,l:"3 days"},{v:7,l:"Weekly"},{v:14,l:"Fortnightly"}].map(opt=><button key={opt.v} className="btn" onClick={()=>saveState({schedule:{...schedule,frequencyDays:opt.v}})} style={{padding:"5px 10px",fontSize:"12px",fontWeight:schedule.frequencyDays===opt.v?"600":"400",background:schedule.frequencyDays===opt.v?T.text:T.bgCard2,color:schedule.frequencyDays===opt.v?T.bg:T.textMuted,border:`1px solid ${schedule.frequencyDays===opt.v?T.text:T.border}`}}>{opt.l}</button>)}
                   </div>
                 </div>
                 <div style={{fontSize:"13px",color:T.textFaint,background:T.bgCard2,borderRadius:"10px",padding:"10px 12px"}}>
@@ -712,6 +768,52 @@ export default function BinRota() {
               </div>
             )}
 
+            {/* Admin tools: fairness stats + reset */}
+            {isAdmin&&(
+              <div style={{display:"flex",gap:"8px"}}>
+                <button className="btn" onClick={()=>setShowFairnessStats(v=>!v)}
+                  style={{flex:1,padding:"11px",fontSize:"13px",fontWeight:"600",background:showFairnessStats?T.currentAccent:T.bgCard,color:showFairnessStats?"#fff":T.text,border:`1px solid ${showFairnessStats?T.currentAccent:T.border}`}}>
+                  📊 {showFairnessStats?"Hide Stats":"Fairness Stats"}
+                </button>
+                <button className="btn" onClick={()=>requireAdmin(()=>{
+                  if(window.confirm("Reset the whole rota? This clears all turns and history. Cannot be undone.")){
+                    saveState({history:[],alerts:[]});
+                    setForcedCurrentId(null);
+                  }
+                })} style={{flex:1,padding:"11px",fontSize:"13px",fontWeight:"600",background:T.bgCard,color:T.removeBtnText,border:`1.5px solid ${T.alertBorder}`}}>
+                  🔁 Reset Rota
+                </button>
+              </div>
+            )}
+
+            {/* Fairness stats panel */}
+            {showFairnessStats&&(
+              <div className="fade-in" style={{background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:"16px",overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,fontSize:"13px",fontWeight:"700",color:T.text}}>📊 Turn Fairness</div>
+                {[...residents].sort((a,b)=>{
+                  const ta=getTurnCount(history,a.id),tb=getTurnCount(history,b.id);
+                  return tb-ta;
+                }).map((r,idx,arr)=>{
+                  const turns=getTurnCount(history,r.id);
+                  const lastEntry=history.filter(h=>h.personId===r.id&&!h.skipped)[0];
+                  const maxTurns=getTurnCount(history,arr[0].id)||1;
+                  const barWidth=Math.round((turns/maxTurns)*100);
+                  return(
+                    <div key={r.id} style={{padding:"12px 16px",borderBottom:idx<arr.length-1?`1px solid ${T.border}`:"none"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+                        <span style={{fontSize:"14px",fontWeight:"500",color:T.text}}>{r.name}{!r.active&&<span style={{fontSize:"11px",color:T.textFaint,marginLeft:"6px"}}>Away</span>}</span>
+                        <span style={{fontSize:"13px",fontWeight:"700",color:T.currentAccent}}>{turns} turn{turns!==1?"s":""}</span>
+                      </div>
+                      <div style={{height:"6px",background:T.bgCard2,borderRadius:"3px",overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${barWidth}%`,background:T.currentAccent,borderRadius:"3px",transition:"width 0.4s"}}></div>
+                      </div>
+                      <div style={{fontSize:"11px",color:T.textFaint,marginTop:"4px"}}>Last: {lastEntry?.date||"Never"}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div style={{display:"flex",gap:"10px"}}>
               {[{label:"Total",value:residents.length},{label:"Active",value:activeResidents.length,color:T.currentAccent},{label:"Away",value:residents.filter(r=>!r.active).length,color:T.textFaint}].map(stat=>(
                 <div key={stat.label} style={{flex:1,background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:"14px",padding:"12px 14px",textAlign:"center"}}>
@@ -768,6 +870,11 @@ export default function BinRota() {
                         {isAdmin&&<>
                           <button className="btn" onClick={()=>startEdit(r)} style={{background:"transparent",color:T.textFaint,padding:"4px",fontSize:"17px",border:"none"}}>✏️</button>
                           <button className="btn" onClick={()=>deleteResident(r.id)} style={{background:"transparent",color:T.removeBtnText,padding:"4px",fontSize:"17px",border:"none",opacity:0.6}}>🗑️</button>
+                          <button className="btn" onClick={()=>setForcedCurrentId(forcedCurrentId===r.id?null:r.id)}
+                            title="Set as current person"
+                            style={{background:forcedCurrentId===r.id?T.currentAccent:"transparent",color:forcedCurrentId===r.id?"#fff":T.currentAccent,padding:"4px 8px",fontSize:"13px",fontWeight:"700",border:`1px solid ${T.currentAccent}`,borderRadius:"8px"}}>
+                            {forcedCurrentId===r.id?"★ Current":"☆"}
+                          </button>
                         </>}
                       </div>
                     )}
@@ -802,9 +909,9 @@ export default function BinRota() {
                     const bin=BIN_TYPES.find(b=>b.id===h.binType);
                     return(
                       <div key={h.id} style={{padding:"13px 16px",borderBottom:idx<history.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:"12px"}}>
-                        <div style={{fontSize:"22px"}}>{bin?.emoji||"🗑️"}</div>
+                        <div style={{fontSize:"22px"}}>{h.skipped?"⏭️":h.outOfTurn?"🙌":bin?.emoji||"🗑️"}</div>
                         <div style={{flex:1}}>
-                          <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}> emptied {bin?.label||h.binType}</span></div>
+                          <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}>{h.skipped?" — turn skipped":h.outOfTurn?" covered (not their turn)":\` emptied \${bin?.label||h.binType}\`}</span></div>
                           <div style={{fontSize:"12px",color:T.textFaint,marginTop:"2px"}}>{h.date}</div>
                         </div>
                         <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.currentAccent,opacity:0.5,flexShrink:0}}/>
@@ -819,7 +926,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.7</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.9</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
