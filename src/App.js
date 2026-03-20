@@ -911,7 +911,7 @@ export default function BinRota() {
                       <div key={h.id} style={{padding:"13px 16px",borderBottom:idx<history.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:"12px"}}>
                         <div style={{fontSize:"22px"}}>{h.skipped?"⏭️":h.outOfTurn?"🙌":bin?.emoji||"🗑️"}</div>
                         <div style={{flex:1}}>
-                          <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}>{h.skipped?" — turn skipped":h.outOfTurn?" covered (not their turn)":\` emptied \${bin?.label||h.binType}\`}</span></div>
+                          <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}>{h.skipped?" — turn skipped":h.outOfTurn?" covered (not their turn)":`emptied ${bin?.label||h.binType}`}</span></div>
                           <div style={{fontSize:"12px",color:T.textFaint,marginTop:"2px"}}>{h.date}</div>
                         </div>
                         <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.currentAccent,opacity:0.5,flexShrink:0}}/>
