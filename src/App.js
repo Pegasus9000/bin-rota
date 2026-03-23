@@ -58,6 +58,30 @@ function getNextPersonIndex(history, residents, forcedId=null) {
   return residents.findIndex((r) => r.id === counts[0].id);
 }
 
+// Average turns of OTHER active residents (excluding the returning person)
+function getGroupAverageExcluding(history, residents, excludeId) {
+  const others = residents.filter(r => r.active && r.id !== excludeId);
+  if (!others.length) return 0;
+  const total = others.reduce((sum, r) => sum + getTurnCount(history, r.id), 0);
+  return Math.floor(total / others.length);
+}
+
+// Add synthetic away-credit entries so returning person matches group average
+function applyReturnFromAway(history, person, residents) {
+  const avg = getGroupAverageExcluding(history, residents, person.id);
+  const current = getTurnCount(history, person.id);
+  const catchUp = Math.max(0, avg - current);
+  if (catchUp === 0) return history;
+  const now = Date.now();
+  const entries = Array.from({length: catchUp}, (_, i) => ({
+    id: now+i, turnId: now+i,
+    personId: person.id, personName: person.name,
+    binType: "away", awayCredit: true,
+    date: new Date().toLocaleDateString("en-GB"), ts: now+i,
+  }));
+  return [...entries, ...history].slice(0, 100);
+}
+
 function getStreak(history, residentId) {
   if (!history.length) return 0;
   let streak = 0;
@@ -110,6 +134,10 @@ export default function BinRota() {
     const saved = localStorage.getItem("binrota-theme");
     if (saved) return saved === "dark";
     return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  });
+  // Show welcome screen on first ever visit to this device
+  const [showWelcome, setShowWelcome] = useState(() => {
+    return !localStorage.getItem("binrota-visited");
   });
   function toggleTheme() { setIsDark(v => { localStorage.setItem("binrota-theme", !v?"dark":"light"); return !v; }); }
 
@@ -316,7 +344,18 @@ export default function BinRota() {
     saveState({residents:residents.map(r=>r.id===id?{...r,name:t}:r)});
     setEditingId(null);setEditingName("");
   }
-  function toggleActive(id){saveState({residents:residents.map(r=>r.id===id?{...r,active:!r.active}:r)});}
+  function toggleActive(id){
+    const person = residents.find(r => r.id === id);
+    const isReturning = person && !person.active; // was inactive, now going active
+    const newResidents = residents.map(r => r.id===id ? {...r, active:!r.active} : r);
+    if (isReturning) {
+      // Bring their turn count up to group average so they slot in fairly
+      const updatedHistory = applyReturnFromAway(history, person, newResidents);
+      saveState({residents: newResidents, history: updatedHistory});
+    } else {
+      saveState({residents: newResidents});
+    }
+  }
   function deleteResident(id){
     if(editingId===id)cancelEdit();
     saveState({residents:residents.filter(r=>r.id!==id),history:history.filter(e=>e.personId!==id)});
@@ -456,6 +495,57 @@ export default function BinRota() {
                 style={{padding:"14px",fontSize:"15px",fontWeight:"500",background:T.bgCard2,color:T.textMuted,border:`1px solid ${T.border}`}}>
                 No — keep {showSkipConfirm.skippedPerson.name} as current
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WELCOME / ONBOARDING MODAL */}
+      {showWelcome&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:120,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{background:T.bgCard,borderRadius:"24px",padding:"28px 24px",width:"100%",maxWidth:"360px",boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
+            
+            {/* Logo + title */}
+            <div style={{textAlign:"center",marginBottom:"20px"}}>
+              <div style={{fontSize:"52px",marginBottom:"8px"}}>🗑️</div>
+              <div style={{fontSize:"22px",fontWeight:"800",color:T.text,letterSpacing:"-0.5px"}}>Bin Rota</div>
+              <div style={{fontSize:"14px",color:T.textFaint,marginTop:"4px"}}>Your shared house bin schedule</div>
+            </div>
+
+            {/* Quick steps */}
+            <div style={{display:"flex",flexDirection:"column",gap:"12px",marginBottom:"24px"}}>
+              {[
+                {icon:"👤",text:"Check whose turn it is on the Rota tab"},
+                {icon:"✅",text:"Tap the green button after you empty a bin"},
+                {icon:"🗑️",text:"Tap Report Full if a bin needs emptying"},
+                {icon:"✈️",text:"Toggle yourself off if you go away"},
+              ].map((item,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:"12px",background:T.bgCard2,borderRadius:"12px",padding:"12px 14px"}}>
+                  <div style={{fontSize:"22px",flexShrink:0}}>{item.icon}</div>
+                  <div style={{fontSize:"14px",color:T.text,lineHeight:"1.4"}}>{item.text}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Buttons */}
+            <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+              <button className="btn" onClick={()=>{
+                localStorage.setItem("binrota-visited","1");
+                setShowWelcome(false);
+                setShowHelp(true);
+              }} style={{padding:"14px",fontSize:"15px",fontWeight:"600",background:T.bgCard2,color:T.text,border:`1px solid ${T.border}`}}>
+                📖 Show me the full guide
+              </button>
+              <button className="btn" onClick={()=>{
+                localStorage.setItem("binrota-visited","1");
+                setShowWelcome(false);
+              }} style={{padding:"14px",fontSize:"15px",fontWeight:"700",background:T.currentAccent,color:"#fff",border:"none"}}>
+                Got it — take me to the app ✓
+              </button>
+            </div>
+
+            <div style={{fontSize:"11px",color:T.textFaint,textAlign:"center",marginTop:"14px",lineHeight:1.5}}>
+              This will only show once. Tap ? in the header anytime to reopen the guide.
             </div>
           </div>
         </div>
@@ -911,9 +1001,9 @@ export default function BinRota() {
                     const bin=BIN_TYPES.find(b=>b.id===h.binType);
                     return(
                       <div key={h.id} style={{padding:"13px 16px",borderBottom:idx<history.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:"12px"}}>
-                        <div style={{fontSize:"22px"}}>{h.skipped?"⏭️":h.outOfTurn?"🙌":bin?.emoji||"🗑️"}</div>
+                        <div style={{fontSize:"22px"}}>{h.skipped?"⏭️":h.awayCredit?"✈️":h.outOfTurn?"🙌":bin?.emoji||"🗑️"}</div>
                         <div style={{flex:1}}>
-                          <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}>{h.skipped?" — turn skipped":h.outOfTurn?" covered (not their turn)":`emptied ${bin?.label||h.binType}`}</span></div>
+                          <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}>{h.skipped?" — turn skipped":h.awayCredit?" — was away (catch-up)":h.outOfTurn?" covered (not their turn)":`emptied ${bin?.label||h.binType}`}</span></div>
                           <div style={{fontSize:"12px",color:T.textFaint,marginTop:"2px"}}>{h.date}</div>
                         </div>
                         <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.currentAccent,opacity:0.5,flexShrink:0}}/>
@@ -928,7 +1018,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v1.9</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.1</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
