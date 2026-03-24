@@ -186,6 +186,9 @@ export default function BinRota() {
   const [showPin,setShowPin]=useState(false);
   const [pendingAction,setPendingAction]=useState(null);
   const [showReportPicker,setShowReportPicker]=useState(null);
+  // After reporting full: show WA message popup {binTypeId, reporterName}
+  const [showReportWA,setShowReportWA]=useState(null);
+  const [reportWACopied,setReportWACopied]=useState(false);
   const [showBinPicker,setShowBinPicker]=useState(false);
   const [showWhoAreYou,setShowWhoAreYou]=useState(false);
   // Skip confirmation: {person, binTypeIds} — shown when someone empties out of turn
@@ -268,6 +271,17 @@ export default function BinRota() {
     msg+=`👤 It's *${np}'s* turn to empty the bins\n⏭️ Up next: ${nu}\n\n📅 Collection: *${schedule.day}* (${freq})\n\n✅ Open the app and tap the bin once emptied.`;
     return msg;
   }
+  function buildReportFullMessage(binTypeId, reporterName) {
+    const bin = BIN_TYPES.find(b => b.id === binTypeId);
+    const responsible = currentPerson?.name || "?";
+    let msg = `🚨 *Bin Alert!*\n\n`;
+    msg += `The *${bin?.label}* is full and needs emptying.\n\n`;
+    msg += `👤 It's *${responsible}'s* turn to empty it.\n`;
+    msg += `📢 Reported by: ${reporterName}\n\n`;
+    msg += `Please empty the bin as soon as possible! 🙏`;
+    return msg;
+  }
+
   function copyText(text,setCopied){navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);}).catch(()=>{});}
 
   // Called with confirmed person + bin selection
@@ -387,7 +401,7 @@ export default function BinRota() {
           <div style={{display:"flex",flexDirection:"column",gap:"8px",maxHeight:"240px",overflowY:"auto"}}>
             {residents.filter(r=>r.active).map(r=>{
               const already=existing?.reports?.includes(r.name);
-              return(<button key={r.id} className="btn" disabled={already} onClick={()=>{reportFull(binTypeId,r.name);setShowReportPicker(null);}}
+              return(<button key={r.id} className="btn" disabled={already} onClick={()=>{reportFull(binTypeId,r.name);setShowReportPicker(null);setShowReportWA({binTypeId,reporterName:r.name});}}
                 style={{padding:"12px 16px",fontSize:"15px",fontWeight:"500",background:already?T.bgCard2:T.currentAccent,color:already?T.textFaint:"#fff",border:`1px solid ${already?T.border:T.currentAccent}`,textAlign:"left",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 {r.name}{already&&<span style={{fontSize:"12px"}}>Reported ✓</span>}
               </button>);
@@ -424,6 +438,37 @@ export default function BinRota() {
 
       {showPin&&<PinModal onSuccess={onPinSuccess} onCancel={()=>{setShowPin(false);setPendingAction(null);}} T={T}/>}
       {showReportPicker&&<ReportPicker binTypeId={showReportPicker}/>}
+
+      {/* REPORT FULL — WHATSAPP MESSAGE */}
+      {showReportWA&&(()=>{
+        const bin=BIN_TYPES.find(b=>b.id===showReportWA.binTypeId);
+        const msg=buildReportFullMessage(showReportWA.binTypeId, showReportWA.reporterName);
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowReportWA(null)}>
+            <div style={{background:T.bgCard,borderRadius:"24px 24px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:"480px"}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}>
+                <div style={{fontSize:"28px"}}>{bin?.emoji}</div>
+                <div>
+                  <div style={{fontSize:"17px",fontWeight:"700",color:T.alertText}}>🚨 {bin?.label} reported full!</div>
+                  <div style={{fontSize:"13px",color:T.textFaint,marginTop:"2px"}}>Send an alert to your group now</div>
+                </div>
+              </div>
+              <div style={{background:isDark?"#0a1a0e":"#dcf8c6",borderRadius:"12px",padding:"14px 16px",fontSize:"13px",lineHeight:"1.65",color:isDark?"#d0f0d8":"#111",whiteSpace:"pre-wrap",marginBottom:"14px",border:`1px solid ${isDark?"#1a4a22":"#b5e7a0"}`}}>{msg}</div>
+              <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+                <button className="btn" onClick={()=>copyText(msg,setReportWACopied)} style={{flex:1,background:reportWACopied?T.currentAccent:T.waGreen,color:"#fff",padding:"12px",fontSize:"14px",fontWeight:"700",transition:"background 0.3s"}}>
+                  {reportWACopied?"✅ Copied!":"📋 Copy Message"}
+                </button>
+                <a href={`https://wa.me/?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer"
+                  style={{flex:1,background:T.waGreen,color:"#fff",padding:"12px",fontSize:"14px",fontWeight:"700",borderRadius:"10px",display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none"}}>
+                  Send in WhatsApp ↗
+                </a>
+              </div>
+              <button className="btn" onClick={()=>setShowReportWA(null)} style={{width:"100%",padding:"11px",fontSize:"14px",background:T.bgCard2,color:T.textMuted,border:`1px solid ${T.border}`}}>Close</button>
+            </div>
+          </div>
+        );
+      })()}
+
 
       {/* WHICH BINS? PICKER */}
       {showBinPicker&&(
@@ -1026,7 +1071,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.2</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.3</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
