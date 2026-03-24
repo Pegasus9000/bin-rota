@@ -238,7 +238,6 @@ export default function BinRota() {
   const currentPersonIdx=getNextPersonIndex(history,residents,forcedCurrentId);
   const currentPerson=currentPersonIdx>=0?residents[currentPersonIdx]:null;
   const activeResidents=residents.filter(r=>r.active);
-  const currentActiveIdx=currentPerson?activeResidents.findIndex(r=>r.id===currentPerson.id):-1;
   // Calculate upNext fairly — simulate current person having 1 more turn, then find who is next
   const upNext = (() => {
     if (!currentPerson || activeResidents.length < 2) return null;
