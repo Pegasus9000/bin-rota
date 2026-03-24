@@ -239,7 +239,16 @@ export default function BinRota() {
   const currentPerson=currentPersonIdx>=0?residents[currentPersonIdx]:null;
   const activeResidents=residents.filter(r=>r.active);
   const currentActiveIdx=currentPerson?activeResidents.findIndex(r=>r.id===currentPerson.id):-1;
-  const upNext=activeResidents.length>1?activeResidents[(currentActiveIdx+1)%activeResidents.length]:null;
+  // Calculate upNext fairly — simulate current person having 1 more turn, then find who is next
+  const upNext = (() => {
+    if (!currentPerson || activeResidents.length < 2) return null;
+    // Simulate history after current person empties
+    const simHistory = [{id:-1, turnId:-1, personId: currentPerson.id}, ...history];
+    const nextIdx = getNextPersonIndex(simHistory, residents, null);
+    const next = nextIdx >= 0 ? residents[nextIdx] : null;
+    // Make sure it is not the same person as current
+    return next && next.id !== currentPerson.id ? next : null;
+  })();
   const urgentAlerts=alerts.filter(a=>Array.isArray(a.reports)&&a.reports.length>=REPORTS_TO_URGENT);
   const overdue=isOverdue(schedule,history);
 
@@ -1018,7 +1027,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.1</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.2</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
