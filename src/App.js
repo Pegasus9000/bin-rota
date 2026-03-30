@@ -188,6 +188,8 @@ export default function BinRota() {
   const [showReportPicker,setShowReportPicker]=useState(null);
   // After reporting full: show WA message popup {binTypeId, reporterName}
   const [showReportWA,setShowReportWA]=useState(null);
+  // Generic confirm modal: {title, body, confirmLabel, onConfirm}
+  const [showConfirm,setShowConfirm]=useState(null);
   const [reportWACopied,setReportWACopied]=useState(false);
   const [showBinPicker,setShowBinPicker]=useState(false);
   const [showWhoAreYou,setShowWhoAreYou]=useState(false);
@@ -604,6 +606,29 @@ export default function BinRota() {
         </div>
       )}
 
+      {/* GENERIC CONFIRM MODAL — replaces window.confirm (blocked on mobile) */}
+      {showConfirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:120,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}} onClick={()=>setShowConfirm(null)}>
+          <div style={{background:T.bgCard,borderRadius:"20px",padding:"28px 24px",width:"100%",maxWidth:"340px",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:"36px",textAlign:"center",marginBottom:"10px"}}>{showConfirm.emoji}</div>
+            <div style={{fontSize:"18px",fontWeight:"700",textAlign:"center",color:T.text,marginBottom:"8px"}}>{showConfirm.title}</div>
+            <div style={{fontSize:"14px",color:T.textMuted,textAlign:"center",lineHeight:"1.6",marginBottom:"24px"}}>{showConfirm.body}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+              <button className="btn" onClick={()=>{
+                showConfirm.onConfirm();
+                setShowConfirm(null);
+              }} style={{padding:"14px",fontSize:"15px",fontWeight:"700",background:showConfirm.confirmColor||T.currentAccent,color:"#fff",border:"none"}}>
+                {showConfirm.confirmLabel}
+              </button>
+              <button className="btn" onClick={()=>setShowConfirm(null)}
+                style={{padding:"14px",fontSize:"15px",fontWeight:"500",background:T.bgCard2,color:T.textMuted,border:`1px solid ${T.border}`}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HELP MODAL */}
       {showHelp&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:110,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setShowHelp(false)}>
@@ -705,9 +730,9 @@ export default function BinRota() {
       ))}
 
       {/* TABS */}
-      <div style={{display:"flex",padding:"12px 16px 0",gap:"4px"}}>
+      <div style={{display:"flex",padding:"12px 16px 0",gap:"6px"}}>
         {[["rota","Rota"],["residents","Residents"],["history","History"]].map(([id,lbl])=>(
-          <button key={id} className="btn" onClick={()=>setActiveTab(id)} style={{padding:"7px 16px",fontSize:"14px",fontWeight:activeTab===id?"600":"400",background:activeTab===id?T.bgCard:"transparent",color:activeTab===id?T.text:T.textFaint,border:activeTab===id?`1px solid ${T.border}`:"1px solid transparent"}}>{lbl}</button>
+          <button key={id} className="btn" onClick={()=>setActiveTab(id)} style={{padding:"10px 16px",fontSize:"15px",fontWeight:activeTab===id?"600":"400",background:activeTab===id?T.bgCard:"transparent",color:activeTab===id?T.text:T.textFaint,border:activeTab===id?`1px solid ${T.border}`:"1px solid transparent",flex:1,textAlign:"center"}}>{lbl}</button>
         ))}
       </div>
 
@@ -805,8 +830,14 @@ export default function BinRota() {
                       <div style={{fontSize:"12px",color:isUrgent?T.urgentText:isFull?T.alertText:T.currentAccent,fontWeight:"600",marginBottom:"10px"}}>{isUrgent?"🚨 URGENT":isFull?`⚠️ ${rc} report${rc>1?"s":""}`:"● OK"}</div>
                       {!isFull
                         ?<button className="btn" onClick={()=>{
-                            if(window.confirm("Report " + bin.label + " as full?\n\nThis will alert everyone. Only confirm if the bin genuinely needs emptying."))
-                              setShowReportPicker(bin.id);
+                            setShowConfirm({
+                              emoji: bin.emoji,
+                              title: "Report " + bin.label + " as full?",
+                              body: "This will alert everyone. Only confirm if the bin genuinely needs emptying.",
+                              confirmLabel: "Yes, report it",
+                              confirmColor: T.alertText,
+                              onConfirm: () => setShowReportPicker(bin.id),
+                            });
                           }} style={{background:T.bgCard2,color:T.textMuted,padding:"7px",fontSize:"12px",width:"100%",border:`1px solid ${T.border}`}}>Report Full</button>
                         :<button className="btn" onClick={()=>markEmptied(bin.id)} style={{background:isUrgent?T.urgentText:T.alertText,color:"#fff",padding:"7px",fontSize:"12px",width:"100%",fontWeight:"700"}}>Mark Emptied</button>
                       }
@@ -921,10 +952,14 @@ export default function BinRota() {
                   📊 {showFairnessStats?"Hide Stats":"Fairness Stats"}
                 </button>
                 <button className="btn" onClick={()=>requireAdmin(()=>{
-                  if(window.confirm("Reset the whole rota? This clears all turns and history. Cannot be undone.")){
-                    saveState({history:[],alerts:[]});
-                    setForcedCurrentId(null);
-                  }
+                  setShowConfirm({
+                    emoji: "🔁",
+                    title: "Reset the whole rota?",
+                    body: "This clears all turns and history. This cannot be undone.",
+                    confirmLabel: "Yes, reset everything",
+                    confirmColor: T.removeBtnText,
+                    onConfirm: () => { saveState({history:[],alerts:[]}); setForcedCurrentId(null); },
+                  });
                 })} style={{flex:1,padding:"11px",fontSize:"13px",fontWeight:"600",background:T.bgCard,color:T.removeBtnText,border:`1.5px solid ${T.alertBorder}`}}>
                   🔁 Reset Rota
                 </button>
@@ -1038,7 +1073,14 @@ export default function BinRota() {
             {/* Clear history — admin only */}
             {history.length>0&&(
               <button className="btn" onClick={()=>requireAdmin(()=>{
-                if(window.confirm("Are you sure you want to delete all history? This cannot be undone.")) saveState({history:[]});
+                setShowConfirm({
+                    emoji: "🗑️",
+                    title: "Clear all history?",
+                    body: "This will permanently delete the emptying log. Cannot be undone.",
+                    confirmLabel: "Yes, clear history",
+                    confirmColor: T.removeBtnText,
+                    onConfirm: () => saveState({history:[]}),
+                  });
               })} style={{width:"100%",padding:"12px",fontSize:"14px",fontWeight:"600",background:T.bgCard,color:T.removeBtnText,border:`1.5px solid ${T.alertBorder}`,display:"flex",alignItems:"center",justifyContent:"center",gap:"8px"}}>
                 🗑️ Clear All History {!isAdmin&&<span style={{fontSize:"12px",color:T.textFaint,fontWeight:"400"}}>(admin)</span>}
               </button>
@@ -1071,7 +1113,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.3</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.4</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
