@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, off } from "firebase/database";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyCbOVsNGt4x0JhuUHaeSlKvqIPAjiqo6-U",
@@ -36,9 +37,18 @@ const BIN_TYPES = [
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
 let _db = null;
+let _auth = null;
 function getDB() {
-  if (!_db) { const app = initializeApp(FIREBASE_CONFIG); _db = getDatabase(app); }
+  if (!_db) {
+    const app = initializeApp(FIREBASE_CONFIG);
+    _db = getDatabase(app);
+    _auth = getAuth(app);
+  }
   return _db;
+}
+function getFirebaseAuth() {
+  if (!_auth) getDB();
+  return _auth;
 }
 
 function getTurnCount(history, personId) {
@@ -177,6 +187,7 @@ export default function BinRota() {
   const [showAddForm,setShowAddForm]=useState(false);
   const [activeTab,setActiveTab]=useState("rota");
   const [connStatus,setConnStatus]=useState("connecting");
+  const [authReady,setAuthReady]=useState(false);
   const [justDone,setJustDone]=useState(null);
   const [doneCopied,setDoneCopied]=useState(false);
   const [nudgeCopied,setNudgeCopied]=useState(false);
@@ -204,7 +215,25 @@ export default function BinRota() {
   const lastWriteId=useRef(null);
   const justDoneTimer=useRef(null);
 
+  // Sign in anonymously so Firebase auth rules (auth != null) are satisfied
   useEffect(()=>{
+    try {
+      const auth = getFirebaseAuth();
+      onAuthStateChanged(auth, (user) => {
+        if (user) {
+          setAuthReady(true);
+        } else {
+          signInAnonymously(auth).catch(e => {
+            console.error("Anonymous sign-in failed:", e);
+            setConnStatus("error");
+          });
+        }
+      });
+    } catch(e) { setConnStatus("error"); }
+  }, []); // eslint-disable-line
+
+  useEffect(()=>{
+    if (!authReady) return; // wait for anonymous auth before connecting
     let db; try{db=getDB();}catch(e){setConnStatus("error");return;}
     const dbRef=ref(db,DB_PATH);
     const unsub=onValue(dbRef,(snapshot)=>{
@@ -221,7 +250,7 @@ export default function BinRota() {
       setConnStatus("live");
     },(e)=>{console.error(e);setConnStatus("error");});
     return()=>off(dbRef,"value",unsub);
-  },[]); // eslint-disable-line
+  },[authReady]); // eslint-disable-line
 
   useEffect(()=>()=>{if(justDoneTimer.current)clearTimeout(justDoneTimer.current)},[]);
 
@@ -1113,7 +1142,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.4</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.5</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
