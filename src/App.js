@@ -36,20 +36,12 @@ const BIN_TYPES = [
 ];
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
-let _db = null;
-let _auth = null;
-function getDB() {
-  if (!_db) {
-    const app = initializeApp(FIREBASE_CONFIG);
-    _db = getDatabase(app);
-    _auth = getAuth(app);
-  }
-  return _db;
-}
-function getFirebaseAuth() {
-  if (!_auth) getDB();
-  return _auth;
-}
+// Initialise Firebase once at module level — avoids any timing issues
+const _app  = initializeApp(FIREBASE_CONFIG);
+const _db   = getDatabase(_app);
+const _auth = getAuth(_app);
+function getDB()          { return _db; }
+function getFirebaseAuth(){ return _auth; }
 
 function getTurnCount(history, personId) {
   // Count unique turns (by turnId) — excludes outOfTurn entries
@@ -141,15 +133,22 @@ function PinModal({ onSuccess, onCancel, T }) {
 
 export default function BinRota() {
   const [isDark, setIsDark] = useState(() => {
-    const saved = localStorage.getItem("binrota-theme");
-    if (saved) return saved === "dark";
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+    try {
+      const saved = localStorage.getItem("binrota-theme");
+      if (saved) return saved === "dark";
+    } catch(e) {}
+    return false; // default: always light mode, ignore system setting
   });
   // Show welcome screen on first ever visit to this device
   const [showWelcome, setShowWelcome] = useState(() => {
-    return !localStorage.getItem("binrota-visited");
+    try { return !localStorage.getItem("binrota-visited"); } catch(e) { return false; }
   });
-  function toggleTheme() { setIsDark(v => { localStorage.setItem("binrota-theme", !v?"dark":"light"); return !v; }); }
+  function toggleTheme() {
+    setIsDark(v => {
+      try { localStorage.setItem("binrota-theme", !v?"dark":"light"); } catch(e) {}
+      return !v;
+    });
+  }
 
   const T = isDark ? {
     bg:"#1c1c1e", bgCard:"#2c2c2e", bgCard2:"#3a3a3c", bgInput:"#1c1c1e",
@@ -215,21 +214,24 @@ export default function BinRota() {
   const lastWriteId=useRef(null);
   const justDoneTimer=useRef(null);
 
-  // Sign in anonymously so Firebase auth rules (auth != null) are satisfied
+  // Sign in anonymously — satisfies Firebase "auth != null" rules
   useEffect(()=>{
-    try {
-      const auth = getFirebaseAuth();
-      onAuthStateChanged(auth, (user) => {
-        if (user) {
-          setAuthReady(true);
-        } else {
-          signInAnonymously(auth).catch(e => {
-            console.error("Anonymous sign-in failed:", e);
-            setConnStatus("error");
+    const auth = getFirebaseAuth();
+    // onAuthStateChanged fires immediately if already signed in
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthReady(true);
+      } else {
+        // Not signed in yet — sign in anonymously
+        signInAnonymously(auth)
+          .then(() => setAuthReady(true))
+          .catch(() => {
+            // Auth failed — try connecting anyway (may work if rules changed back)
+            setAuthReady(true);
           });
-        }
-      });
-    } catch(e) { setConnStatus("error"); }
+      }
+    });
+    return () => unsubAuth();
   }, []); // eslint-disable-line
 
   useEffect(()=>{
@@ -614,14 +616,14 @@ export default function BinRota() {
             {/* Buttons */}
             <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
               <button className="btn" onClick={()=>{
-                localStorage.setItem("binrota-visited","1");
+                try{localStorage.setItem("binrota-visited","1");}catch(e){}
                 setShowWelcome(false);
                 setShowHelp(true);
               }} style={{padding:"14px",fontSize:"15px",fontWeight:"600",background:T.bgCard2,color:T.text,border:`1px solid ${T.border}`}}>
                 📖 Show me the full guide
               </button>
               <button className="btn" onClick={()=>{
-                localStorage.setItem("binrota-visited","1");
+                try{localStorage.setItem("binrota-visited","1");}catch(e){}
                 setShowWelcome(false);
               }} style={{padding:"14px",fontSize:"15px",fontWeight:"700",background:T.currentAccent,color:"#fff",border:"none"}}>
                 Got it — take me to the app ✓
@@ -700,7 +702,28 @@ export default function BinRota() {
           <div style={{width:"8px",height:"8px",borderRadius:"50%",background:statusDot}}/>
           <div style={{fontSize:"12px",color:statusDot,fontWeight:"500"}}>{statusText}</div>
           <button className="btn" onClick={()=>setShowHelp(true)} style={{background:T.bgCard2,border:`1px solid ${T.border}`,padding:"5px 11px",fontSize:"15px",fontWeight:"700",color:T.textMuted,lineHeight:1}}>?</button>
-          <button className="btn" onClick={toggleTheme} style={{background:T.bgCard2,border:`1px solid ${T.border}`,padding:"5px 10px",fontSize:"16px",lineHeight:1}}>{isDark?"☀️":"🌙"}</button>
+          <button className="btn" onClick={toggleTheme}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              display:"flex",alignItems:"center",gap:"0",
+              background:T.bgCard2,border:`1px solid ${T.border}`,
+              borderRadius:"20px",padding:"3px",cursor:"pointer",
+              height:"32px",width:"68px",position:"relative",flexShrink:0
+            }}>
+            {/* Track labels */}
+            <span style={{flex:1,textAlign:"center",fontSize:"13px",lineHeight:1,zIndex:1,transition:"opacity 0.2s",opacity:isDark?0.4:1}}>☀️</span>
+            <span style={{flex:1,textAlign:"center",fontSize:"13px",lineHeight:1,zIndex:1,transition:"opacity 0.2s",opacity:isDark?1:0.4}}>🌙</span>
+            {/* Sliding thumb */}
+            <div style={{
+              position:"absolute",top:"3px",
+              left:isDark?"36px":"3px",
+              width:"26px",height:"26px",borderRadius:"50%",
+              background:isDark?"#3a3a3c":"#ffffff",
+              boxShadow:"0 1px 4px rgba(0,0,0,0.25)",
+              transition:"left 0.22s ease",
+              zIndex:2,
+            }}/>
+          </button>
           {isAdmin&&<button className="btn" onClick={()=>setIsAdmin(false)} style={{background:T.adminBg,border:`1px solid ${T.adminBorder}`,color:T.adminText,padding:"4px 10px",fontSize:"11px",fontWeight:"700"}}>ADMIN ✕</button>}
         </div>
       </div>
@@ -1142,7 +1165,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.5</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.7</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
