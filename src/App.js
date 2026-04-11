@@ -1073,7 +1073,7 @@ export default function BinRota() {
               {residents.length===0&&<div style={{padding:"28px",textAlign:"center",color:T.textFaint,fontSize:"14px"}}>No residents yet.</div>}
               {residents.map((r,idx)=>{
                 const isCurrent=r.id===currentPerson?.id;
-                const turnCount=history.filter(h=>h.personId===r.id).length;
+                const turnCount=getTurnCount(history,r.id); // real empties only
                 return(
                   <div key={r.id} style={{padding:"14px 16px",borderBottom:idx<residents.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"center",gap:"12px",opacity:r.active?1:0.45,transition:"opacity 0.2s"}}>
                     <div style={{width:"38px",height:"38px",borderRadius:"50%",flexShrink:0,background:isCurrent&&r.active?T.currentAccentBg:T.bgCard2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px",fontWeight:"700",color:isCurrent&&r.active?T.currentAccent:T.textFaint}}>
@@ -1165,7 +1165,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.7</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.8</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
