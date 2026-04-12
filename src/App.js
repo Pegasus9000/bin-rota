@@ -1000,15 +1000,7 @@ export default function BinRota() {
               </div>
             )}
 
-            {!isAdmin&&(
-              <div style={{background:T.adminBg,border:`1px solid ${T.adminBorder}`,borderRadius:"14px",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"12px"}}>
-                <div>
-                  <div style={{fontSize:"14px",fontWeight:"600",color:T.adminText}}>🔐 Admin only</div>
-                  <div style={{fontSize:"12px",color:T.textFaint,marginTop:"2px"}}>Adding and removing people requires admin access</div>
-                </div>
-                <button className="btn" onClick={()=>requireAdmin(()=>{})} style={{background:T.adminText,color:"#fff",padding:"8px 16px",fontSize:"13px",fontWeight:"700",flexShrink:0}}>Unlock</button>
-              </div>
-            )}
+            {/* Admin controls hidden from non-admin users */}
 
             {/* Admin tools: fairness stats + reset */}
             {isAdmin&&(
@@ -1112,15 +1104,8 @@ export default function BinRota() {
                       </div>
                     ):(
                       <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                        {isAdmin ? (
-                          <Toggle checked={r.active} onChange={()=>toggleActive(r.id)} color={T.toggleColor}/>
-                        ) : (
-                          // Non-admin: show a locked toggle that prompts for PIN
-                          <div onClick={()=>requireAdmin(()=>{})} style={{cursor:"pointer",opacity:0.5,display:"flex",alignItems:"center",gap:"4px"}}>
-                            <Toggle checked={r.active} onChange={()=>{}} color={T.toggleColor}/>
-                            <span style={{fontSize:"11px",color:T.textFaint}}>🔒</span>
-                          </div>
-                        )}
+                        {/* Toggle — admin can change, others see it but it does nothing silently */}
+                        <Toggle checked={r.active} onChange={isAdmin ? ()=>toggleActive(r.id) : ()=>{}} color={T.toggleColor}/>
                         {isAdmin&&<>
                           <button className="btn" onClick={()=>startEdit(r)} style={{background:"transparent",color:T.textFaint,padding:"4px",fontSize:"17px",border:"none"}}>✏️</button>
                           <button className="btn" onClick={()=>deleteResident(r.id)} style={{background:"transparent",color:T.removeBtnText,padding:"4px",fontSize:"17px",border:"none",opacity:0.6}}>🗑️</button>
@@ -1143,7 +1128,7 @@ export default function BinRota() {
                 );
               })}
             </div>
-            <div style={{fontSize:"12px",color:T.textFaint,textAlign:"center",lineHeight:1.5}}>Only admin can mark someone as away or change the rota order.<br/>Tap 🔒 to unlock with PIN.</div>
+            <div style={{fontSize:"12px",color:T.textFaint,textAlign:"center",lineHeight:1.5}}>Toggle the switch to mark someone as away.<br/>They'll be skipped in the rota until they're back.</div>
           </div>
         )}
 
@@ -1194,7 +1179,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.9</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.0</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
