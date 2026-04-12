@@ -1033,33 +1033,73 @@ export default function BinRota() {
               </div>
             )}
 
-            {/* Fairness stats panel */}
-            {showFairnessStats&&(
-              <div className="fade-in" style={{background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:"16px",overflow:"hidden"}}>
-                <div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,fontSize:"13px",fontWeight:"700",color:T.text}}>📊 Turn Fairness</div>
-                {[...residents].sort((a,b)=>{
-                  const ta=getTurnCount(history,a.id),tb=getTurnCount(history,b.id);
-                  return tb-ta;
-                }).map((r,idx,arr)=>{
-                  const turns=getTurnCount(history,r.id);
-                  const lastEntry=history.filter(h=>h.personId===r.id&&!h.skipped)[0];
-                  const maxTurns=getTurnCount(history,arr[0].id)||1;
-                  const barWidth=Math.round((turns/maxTurns)*100);
-                  return(
-                    <div key={r.id} style={{padding:"12px 16px",borderBottom:idx<arr.length-1?`1px solid ${T.border}`:"none"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
-                        <span style={{fontSize:"14px",fontWeight:"500",color:T.text}}>{r.name}{!r.active&&<span style={{fontSize:"11px",color:T.textFaint,marginLeft:"6px"}}>Away</span>}</span>
-                        <span style={{fontSize:"13px",fontWeight:"700",color:T.currentAccent}}>{turns} turn{turns!==1?"s":""}</span>
+            {/* Fairness stats panel — competitive leaderboard */}
+            {showFairnessStats&&(()=>{
+              const sorted = [...residents].sort((a,b)=>getTurnCount(history,b.id)-getTurnCount(history,a.id));
+              const maxTurns = getTurnCount(history, sorted[0]?.id) || 1;
+              const totalTurns = sorted.reduce((s,r)=>s+getTurnCount(history,r.id),0);
+              const fairShare = totalTurns > 0 ? (totalTurns / sorted.filter(r=>r.active).length) : 0;
+              const medals = ["🥇","🥈","🥉"];
+              return(
+                <div className="fade-in" style={{background:T.bgCard,border:`1px solid ${T.border}`,borderRadius:"16px",overflow:"hidden"}}>
+                  {/* Header */}
+                  <div style={{padding:"14px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{fontSize:"14px",fontWeight:"700",color:T.text}}>🏆 Turn Leaderboard</div>
+                    <div style={{fontSize:"12px",color:T.textFaint}}>Fair share: {Math.round(fairShare)} turns each</div>
+                  </div>
+                  {sorted.map((r,idx)=>{
+                    const turns = getTurnCount(history,r.id);
+                    const barPct = Math.round((turns/maxTurns)*100);
+                    const lastEntry = history.filter(h=>h.personId===r.id&&!h.outOfTurn&&!h.awayCredit&&!h.skipped)[0];
+                    const diff = turns - Math.round(fairShare);
+                    const isOver = diff > 0;
+                    const isUnder = diff < 0;
+                    const barColor = isOver ? "#ff3b30" : isUnder ? T.currentAccent : "#f59e0b";
+                    const isCurrent = r.id === residents.find(x=>x.id===residents[getNextPersonIndex(history,residents,forcedCurrentId)]?.id)?.id;
+                    return(
+                      <div key={r.id} style={{padding:"14px 16px",borderBottom:idx<sorted.length-1?`1px solid ${T.border}`:"none",background:isCurrent?T.currentBg:"transparent"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}}>
+                          {/* Rank */}
+                          <div style={{fontSize:"18px",width:"24px",textAlign:"center",flexShrink:0}}>
+                            {idx<3?medals[idx]:<span style={{fontSize:"13px",color:T.textFaint,fontWeight:"600"}}>#{idx+1}</span>}
+                          </div>
+                          {/* Avatar */}
+                          <div style={{width:"32px",height:"32px",borderRadius:"50%",background:T.bgCard2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",fontWeight:"700",color:T.textFaint,flexShrink:0}}>
+                            {r.name.charAt(0).toUpperCase()}
+                          </div>
+                          {/* Name + status */}
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                              <span style={{fontSize:"15px",fontWeight:"600",color:T.text}}>{r.name}</span>
+                              {!r.active&&<span style={{fontSize:"10px",background:T.pillBg,color:T.textFaint,padding:"1px 6px",borderRadius:"10px"}}>Away</span>}
+                              {isCurrent&&<span style={{fontSize:"10px",background:T.currentAccentBg,color:T.currentAccent,padding:"1px 6px",borderRadius:"10px",fontWeight:"700"}}>Current</span>}
+                            </div>
+                            <div style={{fontSize:"11px",color:T.textFaint,marginTop:"1px"}}>Last: {lastEntry?.date||"Never"}</div>
+                          </div>
+                          {/* Turn count + fairness badge */}
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontSize:"18px",fontWeight:"800",color:T.text}}>{turns}</div>
+                            <div style={{fontSize:"11px",fontWeight:"600",color:isOver?"#ff3b30":isUnder?T.currentAccent:"#f59e0b"}}>
+                              {isOver?`+${diff} over`:isUnder?`${diff} under`:"on track"}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div style={{height:"8px",background:T.bgCard2,borderRadius:"4px",overflow:"hidden",marginLeft:"34px"}}>
+                          <div style={{height:"100%",width:`${barPct}%`,background:barColor,borderRadius:"4px",transition:"width 0.5s ease"}}></div>
+                        </div>
                       </div>
-                      <div style={{height:"6px",background:T.bgCard2,borderRadius:"3px",overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${barWidth}%`,background:T.currentAccent,borderRadius:"3px",transition:"width 0.4s"}}></div>
-                      </div>
-                      <div style={{fontSize:"11px",color:T.textFaint,marginTop:"4px"}}>Last: {lastEntry?.date||"Never"}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                  {/* Footer summary */}
+                  <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontSize:"12px",color:T.textFaint}}>Total turns: <span style={{fontWeight:"600",color:T.text}}>{totalTurns}</span></div>
+                    <div style={{fontSize:"12px",color:T.textFaint}}>🔴 over · 🟢 under · 🟡 on track</div>
+                  </div>
+                </div>
+              );
+            })()}
+            {showFairnessStats&&<div style={{height:"4px"}}/>}
 
             <div style={{display:"flex",gap:"10px"}}>
               {[{label:"Total",value:residents.length},{label:"Active",value:activeResidents.length,color:T.currentAccent},{label:"Away",value:residents.filter(r=>!r.active).length,color:T.textFaint}].map(stat=>(
@@ -1188,7 +1228,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.1</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.2</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
