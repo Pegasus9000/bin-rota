@@ -207,6 +207,7 @@ export default function BinRota() {
   const [showSkipConfirm,setShowSkipConfirm]=useState(null);
   const [showHelp,setShowHelp]=useState(false);
   const [forcedCurrentId,setForcedCurrentId]=useState(null);
+  const [forcedNextId,setForcedNextId]=useState(null);
   const [showFairnessStats,setShowFairnessStats]=useState(false);
 
   const stateRef=useRef({residents,history,alerts,schedule});
@@ -274,14 +275,18 @@ export default function BinRota() {
   const currentPersonIdx=getNextPersonIndex(history,residents,forcedCurrentId);
   const currentPerson=currentPersonIdx>=0?residents[currentPersonIdx]:null;
   const activeResidents=residents.filter(r=>r.active);
-  // Calculate upNext fairly — simulate current person having 1 more turn, then find who is next
+  // Calculate upNext — respect admin override, otherwise use fairness logic
   const upNext = (() => {
     if (!currentPerson || activeResidents.length < 2) return null;
-    // Simulate history after current person empties
+    // Admin has manually set who is next
+    if (forcedNextId !== null) {
+      const forced = residents.find(r => r.id === forcedNextId && r.active);
+      if (forced && forced.id !== currentPerson.id) return forced;
+    }
+    // Simulate history after current person empties, find next fairly
     const simHistory = [{id:-1, turnId:-1, personId: currentPerson.id}, ...history];
     const nextIdx = getNextPersonIndex(simHistory, residents, null);
     const next = nextIdx >= 0 ? residents[nextIdx] : null;
-    // Make sure it is not the same person as current
     return next && next.id !== currentPerson.id ? next : null;
   })();
   const urgentAlerts=alerts.filter(a=>Array.isArray(a.reports)&&a.reports.length>=REPORTS_TO_URGENT);
@@ -337,7 +342,12 @@ export default function BinRota() {
     justDoneTimer.current=setTimeout(()=>setJustDone(null),8000);
   }
 
-  function clearForcedAfterEmpty(){ setForcedCurrentId(null); }
+  function clearForcedAfterEmpty(){
+    // When current empties, forced next becomes the new current — clear both
+    if (forcedNextId !== null) setForcedCurrentId(forcedNextId);
+    else setForcedCurrentId(null);
+    setForcedNextId(null);
+  }
 
   // Add a synthetic skipped entry so rota advances past this person fairly
   function skipPersonTurn(person){
@@ -795,10 +805,14 @@ export default function BinRota() {
           <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:"16px"}}>
 
             {/* Admin: forced current person notice */}
-            {forcedCurrentId&&isAdmin&&(
-              <div style={{background:T.adminBg,border:`1px solid ${T.adminBorder}`,borderRadius:"12px",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px"}}>
-                <div style={{fontSize:"13px",color:T.adminText}}>🔐 Turn manually set by admin</div>
-                <button className="btn" onClick={()=>setForcedCurrentId(null)} style={{background:"transparent",color:T.adminText,fontSize:"12px",fontWeight:"600",padding:"4px 8px",border:`1px solid ${T.adminBorder}`}}>Clear</button>
+            {(forcedCurrentId||forcedNextId)&&isAdmin&&(
+              <div style={{background:T.adminBg,border:`1px solid ${T.adminBorder}`,borderRadius:"12px",padding:"10px 14px"}}>
+                <div style={{fontSize:"13px",color:T.adminText,marginBottom:"6px"}}>🔐 Rota manually set by admin</div>
+                <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                  {forcedCurrentId&&<div style={{fontSize:"12px",color:T.adminText,background:T.adminBg,border:`1px solid ${T.adminBorder}`,borderRadius:"8px",padding:"3px 10px"}}>★ Current: {residents.find(r=>r.id===forcedCurrentId)?.name}</div>}
+                  {forcedNextId&&<div style={{fontSize:"12px",color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid #f59e0b",borderRadius:"8px",padding:"3px 10px"}}>⏭ Next: {residents.find(r=>r.id===forcedNextId)?.name}</div>}
+                  <button className="btn" onClick={()=>{setForcedCurrentId(null);setForcedNextId(null);}} style={{background:"transparent",color:T.adminText,fontSize:"12px",fontWeight:"600",padding:"3px 10px",border:`1px solid ${T.adminBorder}`,borderRadius:"8px",marginLeft:"auto"}}>Clear all</button>
+                </div>
               </div>
             )}
 
@@ -1097,15 +1111,30 @@ export default function BinRota() {
                         <button className="btn" onClick={cancelEdit} style={{background:T.bgCard2,color:T.textMuted,padding:"6px 10px",fontSize:"16px",border:`1px solid ${T.border}`}}>✕</button>
                       </div>
                     ):(
-                      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                        <Toggle checked={r.active} onChange={()=>toggleActive(r.id)} color={T.toggleColor}/>
+                      <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                        {isAdmin ? (
+                          <Toggle checked={r.active} onChange={()=>toggleActive(r.id)} color={T.toggleColor}/>
+                        ) : (
+                          // Non-admin: show a locked toggle that prompts for PIN
+                          <div onClick={()=>requireAdmin(()=>{})} style={{cursor:"pointer",opacity:0.5,display:"flex",alignItems:"center",gap:"4px"}}>
+                            <Toggle checked={r.active} onChange={()=>{}} color={T.toggleColor}/>
+                            <span style={{fontSize:"11px",color:T.textFaint}}>🔒</span>
+                          </div>
+                        )}
                         {isAdmin&&<>
                           <button className="btn" onClick={()=>startEdit(r)} style={{background:"transparent",color:T.textFaint,padding:"4px",fontSize:"17px",border:"none"}}>✏️</button>
                           <button className="btn" onClick={()=>deleteResident(r.id)} style={{background:"transparent",color:T.removeBtnText,padding:"4px",fontSize:"17px",border:"none",opacity:0.6}}>🗑️</button>
+                          {/* Set current turn */}
                           <button className="btn" onClick={()=>setForcedCurrentId(forcedCurrentId===r.id?null:r.id)}
                             title="Set as current person"
-                            style={{background:forcedCurrentId===r.id?T.currentAccent:"transparent",color:forcedCurrentId===r.id?"#fff":T.currentAccent,padding:"4px 8px",fontSize:"13px",fontWeight:"700",border:`1px solid ${T.currentAccent}`,borderRadius:"8px"}}>
-                            {forcedCurrentId===r.id?"★ Current":"☆"}
+                            style={{background:forcedCurrentId===r.id?T.currentAccent:"transparent",color:forcedCurrentId===r.id?"#fff":T.currentAccent,padding:"4px 7px",fontSize:"12px",fontWeight:"700",border:`1px solid ${T.currentAccent}`,borderRadius:"8px"}}>
+                            {forcedCurrentId===r.id?"★ Now":"☆"}
+                          </button>
+                          {/* Set next turn */}
+                          <button className="btn" onClick={()=>setForcedNextId(forcedNextId===r.id?null:r.id)}
+                            title="Set as next person"
+                            style={{background:forcedNextId===r.id?"#f59e0b":"transparent",color:forcedNextId===r.id?"#fff":"#f59e0b",padding:"4px 7px",fontSize:"12px",fontWeight:"700",border:"1px solid #f59e0b",borderRadius:"8px"}}>
+                            {forcedNextId===r.id?"⏭ Next":"⏭"}
                           </button>
                         </>}
                       </div>
@@ -1114,7 +1143,7 @@ export default function BinRota() {
                 );
               })}
             </div>
-            <div style={{fontSize:"12px",color:T.textFaint,textAlign:"center",lineHeight:1.5}}>Toggle the switch to mark someone as away.<br/>They'll be skipped in the rota until you turn them back on.</div>
+            <div style={{fontSize:"12px",color:T.textFaint,textAlign:"center",lineHeight:1.5}}>Only admin can mark someone as away or change the rota order.<br/>Tap 🔒 to unlock with PIN.</div>
           </div>
         )}
 
@@ -1165,7 +1194,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.8</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v2.9</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
