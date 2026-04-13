@@ -186,7 +186,6 @@ export default function BinRota() {
   const [showAddForm,setShowAddForm]=useState(false);
   const [activeTab,setActiveTab]=useState("rota");
   const [connStatus,setConnStatus]=useState("connecting");
-  const [authReady,setAuthReady]=useState(false);
   const [justDone,setJustDone]=useState(null);
   const [doneCopied,setDoneCopied]=useState(false);
   const [nudgeCopied,setNudgeCopied]=useState(false);
@@ -238,7 +237,6 @@ export default function BinRota() {
           if (Array.isArray(data.alerts))   setAlerts(data.alerts);
           if (data.schedule && typeof data.schedule === "object") setSchedule(data.schedule);
           setConnStatus("live");
-          setAuthReady(true);
         }, (e) => {
           // Permission denied — auth needed. Auth effect will retry.
           connected = false;
