@@ -215,45 +215,68 @@ export default function BinRota() {
   const lastWriteId=useRef(null);
   const justDoneTimer=useRef(null);
 
-  // Sign in anonymously — satisfies Firebase "auth != null" rules
+  // Firebase connection — sign in anonymously AND connect simultaneously.
+  // This avoids the "stuck on Connecting" issue on Brave/slow browsers.
   useEffect(()=>{
+    let unsubDB = null;
+    let connected = false;
+
+    function connectToDB() {
+      if (connected) return;
+      connected = true;
+      try {
+        const db = getDB();
+        const dbRef = ref(db, DB_PATH);
+        unsubDB = onValue(dbRef, (snapshot) => {
+          const data = snapshot.val();
+          if (!data) { setConnStatus("live"); return; }
+          if (data._writeId && data._writeId === lastWriteId.current) {
+            setConnStatus("live"); return;
+          }
+          if (Array.isArray(data.residents) && data.residents.length > 0) setResidents(data.residents);
+          if (Array.isArray(data.history))  setHistory(data.history);
+          if (Array.isArray(data.alerts))   setAlerts(data.alerts);
+          if (data.schedule && typeof data.schedule === "object") setSchedule(data.schedule);
+          setConnStatus("live");
+          setAuthReady(true);
+        }, (e) => {
+          // Permission denied — auth needed. Auth effect will retry.
+          connected = false;
+          if (unsubDB) { off(ref(getDB(), DB_PATH), "value", unsubDB); unsubDB = null; }
+          console.warn("DB connect failed, waiting for auth:", e.code);
+        });
+      } catch(e) { setConnStatus("error"); }
+    }
+
+    // 1. Try connecting immediately (works if already authed or rules are open)
+    connectToDB();
+
+    // 2. Also sign in anonymously in parallel — if connection failed above,
+    //    this will trigger a reconnect once auth completes
     const auth = getFirebaseAuth();
-    // onAuthStateChanged fires immediately if already signed in
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setAuthReady(true);
+        connectToDB(); // retry connection now that we are authed
       } else {
-        // Not signed in yet — sign in anonymously
-        signInAnonymously(auth)
-          .then(() => setAuthReady(true))
-          .catch(() => {
-            // Auth failed — try connecting anyway (may work if rules changed back)
-            setAuthReady(true);
-          });
+        signInAnonymously(auth).catch(() => {
+          // Auth blocked (e.g. Brave shields) — try connecting anyway
+          connectToDB();
+        });
       }
     });
-    return () => unsubAuth();
-  }, []); // eslint-disable-line
 
-  useEffect(()=>{
-    if (!authReady) return; // wait for anonymous auth before connecting
-    let db; try{db=getDB();}catch(e){setConnStatus("error");return;}
-    const dbRef=ref(db,DB_PATH);
-    const unsub=onValue(dbRef,(snapshot)=>{
-      const data=snapshot.val();
-      if(!data){setConnStatus("live");return;}
-      // Only skip if this snapshot is OUR own last write — never skip a flatmate's update
-      if(data._writeId && data._writeId===lastWriteId.current){
-        setConnStatus("live");return;
-      }
-      if(Array.isArray(data.residents)&&data.residents.length>0)setResidents(data.residents);
-      if(Array.isArray(data.history))setHistory(data.history);
-      if(Array.isArray(data.alerts))setAlerts(data.alerts);
-      if(data.schedule&&typeof data.schedule==="object")setSchedule(data.schedule);
-      setConnStatus("live");
-    },(e)=>{console.error(e);setConnStatus("error");});
-    return()=>off(dbRef,"value",unsub);
-  },[authReady]); // eslint-disable-line
+    // 3. Hard timeout — if still connecting after 5s, force-retry
+    const timeout = setTimeout(() => {
+      connected = false;
+      connectToDB();
+    }, 5000);
+
+    return () => {
+      unsubAuth();
+      clearTimeout(timeout);
+      if (unsubDB) off(ref(getDB(), DB_PATH), "value", unsubDB);
+    };
+  }, []); // eslint-disable-line
 
   useEffect(()=>()=>{if(justDoneTimer.current)clearTimeout(justDoneTimer.current)},[]);
 
@@ -476,6 +499,7 @@ export default function BinRota() {
         .urgent-pulse{animation:urgentPulse 1.8s infinite;}
         @keyframes urgentPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,107,0,.3)}50%{box-shadow:0 0 0 9px rgba(255,107,0,0)}}
         .done-pop{animation:donePop 0.4s cubic-bezier(0.175,0.885,0.32,1.275);}
+        @keyframes connPulse{0%,100%{opacity:1}50%{opacity:0.35}}
         @keyframes donePop{0%{transform:scale(0.9);opacity:0}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
       `}</style>
 
@@ -709,7 +733,10 @@ export default function BinRota() {
           <div style={{fontSize:"13px",color:T.textFaint,marginTop:"1px"}}>{activeResidents.length} active · {residents.length-activeResidents.length} away</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-          <div style={{width:"8px",height:"8px",borderRadius:"50%",background:statusDot}}/>
+          <div style={{width:"8px",height:"8px",borderRadius:"50%",background:statusDot,
+            boxShadow:connStatus==="connecting"?`0 0 0 3px ${statusDot}33`:undefined,
+            animation:connStatus==="connecting"?"connPulse 1.4s ease-in-out infinite":undefined
+          }}/>
           <div style={{fontSize:"12px",color:statusDot,fontWeight:"500"}}>{statusText}</div>
           <button className="btn" onClick={()=>setShowHelp(true)} style={{background:T.bgCard2,border:`1px solid ${T.border}`,padding:"5px 11px",fontSize:"15px",fontWeight:"700",color:T.textMuted,lineHeight:1}}>?</button>
           <button className="btn" onClick={toggleTheme}
@@ -1228,7 +1255,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.2</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.3</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
