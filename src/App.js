@@ -28,6 +28,7 @@ const DEFAULT_STATE = {
     { id: 6, name: "Morgan", active: true },
   ],
   history: [], alerts: [], schedule: { day: "Mon", frequencyDays: 7 },
+  forcedCurrentId: null, forcedNextId: null,
 };
 
 const BIN_TYPES = [
@@ -209,8 +210,8 @@ export default function BinRota() {
   const [forcedNextId,setForcedNextId]=useState(null);
   const [showFairnessStats,setShowFairnessStats]=useState(false);
 
-  const stateRef=useRef({residents,history,alerts,schedule});
-  stateRef.current={residents,history,alerts,schedule};
+  const stateRef=useRef({residents,history,alerts,schedule,forcedCurrentId,forcedNextId});
+  stateRef.current={residents,history,alerts,schedule,forcedCurrentId,forcedNextId};
   const lastWriteId=useRef(null);
   const justDoneTimer=useRef(null);
 
@@ -236,6 +237,8 @@ export default function BinRota() {
           if (Array.isArray(data.history))  setHistory(data.history);
           if (Array.isArray(data.alerts))   setAlerts(data.alerts);
           if (data.schedule && typeof data.schedule === "object") setSchedule(data.schedule);
+          setForcedCurrentId(data.forcedCurrentId ?? null);
+          setForcedNextId(data.forcedNextId ?? null);
           setConnStatus("live");
         }, (e) => {
           // Permission denied — auth needed. Auth effect will retry.
@@ -288,6 +291,8 @@ export default function BinRota() {
     if(patch.history!==undefined)setHistory(patch.history);
     if(patch.alerts!==undefined)setAlerts(patch.alerts);
     if(patch.schedule!==undefined)setSchedule(patch.schedule);
+    if(patch.forcedCurrentId!==undefined)setForcedCurrentId(patch.forcedCurrentId);
+    if(patch.forcedNextId!==undefined)setForcedNextId(patch.forcedNextId);
   }
 
   function requireAdmin(fn){if(isAdmin){fn();return;}setPendingAction(()=>fn);setShowPin(true);}
@@ -365,9 +370,8 @@ export default function BinRota() {
 
   function clearForcedAfterEmpty(){
     // When current empties, forced next becomes the new current — clear both
-    if (forcedNextId !== null) setForcedCurrentId(forcedNextId);
-    else setForcedCurrentId(null);
-    setForcedNextId(null);
+    const newCurrent = forcedNextId !== null ? forcedNextId : null;
+    saveState({ forcedCurrentId: newCurrent, forcedNextId: null });
   }
 
   // Add a synthetic skipped entry so rota advances past this person fairly
@@ -845,7 +849,7 @@ export default function BinRota() {
                 <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
                   {forcedCurrentId&&<div style={{fontSize:"12px",color:T.adminText,background:T.adminBg,border:`1px solid ${T.adminBorder}`,borderRadius:"8px",padding:"3px 10px"}}>★ Current: {residents.find(r=>r.id===forcedCurrentId)?.name}</div>}
                   {forcedNextId&&<div style={{fontSize:"12px",color:"#f59e0b",background:"rgba(245,158,11,0.1)",border:"1px solid #f59e0b",borderRadius:"8px",padding:"3px 10px"}}>⏭ Next: {residents.find(r=>r.id===forcedNextId)?.name}</div>}
-                  <button className="btn" onClick={()=>{setForcedCurrentId(null);setForcedNextId(null);}} style={{background:"transparent",color:T.adminText,fontSize:"12px",fontWeight:"600",padding:"3px 10px",border:`1px solid ${T.adminBorder}`,borderRadius:"8px",marginLeft:"auto"}}>Clear all</button>
+                  <button className="btn" onClick={()=>saveState({forcedCurrentId:null,forcedNextId:null})} style={{background:"transparent",color:T.adminText,fontSize:"12px",fontWeight:"600",padding:"3px 10px",border:`1px solid ${T.adminBorder}`,borderRadius:"8px",marginLeft:"auto"}}>Clear all</button>
                 </div>
               </div>
             )}
@@ -1050,7 +1054,7 @@ export default function BinRota() {
                     body: "This clears all turns and history. This cannot be undone.",
                     confirmLabel: "Yes, reset everything",
                     confirmColor: T.removeBtnText,
-                    onConfirm: () => { saveState({history:[],alerts:[]}); setForcedCurrentId(null); },
+                    onConfirm: () => { saveState({history:[],alerts:[],forcedCurrentId:null,forcedNextId:null}); },
                   });
                 })} style={{flex:1,padding:"11px",fontSize:"13px",fontWeight:"600",background:T.bgCard,color:T.removeBtnText,border:`1.5px solid ${T.alertBorder}`}}>
                   🔁 Reset Rota
@@ -1184,13 +1188,13 @@ export default function BinRota() {
                           <button className="btn" onClick={()=>startEdit(r)} style={{background:"transparent",color:T.textFaint,padding:"4px",fontSize:"17px",border:"none"}}>✏️</button>
                           <button className="btn" onClick={()=>deleteResident(r.id)} style={{background:"transparent",color:T.removeBtnText,padding:"4px",fontSize:"17px",border:"none",opacity:0.6}}>🗑️</button>
                           {/* Set current turn */}
-                          <button className="btn" onClick={()=>setForcedCurrentId(forcedCurrentId===r.id?null:r.id)}
+                          <button className="btn" onClick={()=>saveState({forcedCurrentId:forcedCurrentId===r.id?null:r.id})}
                             title="Set as current person"
                             style={{background:forcedCurrentId===r.id?T.currentAccent:"transparent",color:forcedCurrentId===r.id?"#fff":T.currentAccent,padding:"4px 7px",fontSize:"12px",fontWeight:"700",border:`1px solid ${T.currentAccent}`,borderRadius:"8px"}}>
                             {forcedCurrentId===r.id?"★ Now":"☆"}
                           </button>
                           {/* Set next turn */}
-                          <button className="btn" onClick={()=>setForcedNextId(forcedNextId===r.id?null:r.id)}
+                          <button className="btn" onClick={()=>saveState({forcedNextId:forcedNextId===r.id?null:r.id})}
                             title="Set as next person"
                             style={{background:forcedNextId===r.id?"#f59e0b":"transparent",color:forcedNextId===r.id?"#fff":"#f59e0b",padding:"4px 7px",fontSize:"12px",fontWeight:"700",border:"1px solid #f59e0b",borderRadius:"8px"}}>
                             {forcedNextId===r.id?"⏭ Next":"⏭"}
@@ -1253,7 +1257,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.3</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.4</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
