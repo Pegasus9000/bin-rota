@@ -96,7 +96,8 @@ function getStreak(history, residentId) {
 
 function isOverdue(schedule, history) {
   if (!history.length) return false;
-  return (Date.now() - history[0].ts) / (1000 * 60 * 60 * 24) > schedule.frequencyDays;
+  // Warn if bins not emptied in 7+ days regardless of frequency setting
+  return (Date.now() - history[0].ts) / (1000 * 60 * 60 * 24) > 7;
 }
 
 function Toggle({ checked, onChange, color }) {
@@ -974,24 +975,16 @@ export default function BinRota() {
               )}
             </div>
 
-            {/* Schedule */}
+            {/* Schedule — collection day only, frequency removed (bins fill unpredictably) */}
             <div>
-              <div style={sectionLabel}>Collection Schedule</div>
-              <div style={{...cardStyle,padding:"16px",display:"flex",flexDirection:"column",gap:"14px"}}>
-                <div>
-                  <div style={{fontSize:"13px",color:T.textFaint,marginBottom:"8px",fontWeight:"500"}}>Collection day</div>
-                  <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
-                    {DAYS.map(d=><button key={d} className="btn" onClick={()=>saveState({schedule:{...schedule,day:d}})} style={{padding:"6px 11px",fontSize:"13px",fontWeight:schedule.day===d?"600":"400",background:schedule.day===d?T.text:T.bgCard2,color:schedule.day===d?T.bg:T.textMuted,border:`1px solid ${schedule.day===d?T.text:T.border}`}}>{d}</button>)}
-                  </div>
+              <div style={sectionLabel}>Collection Day</div>
+              <div style={{...cardStyle,padding:"16px"}}>
+                <div style={{fontSize:"13px",color:T.textFaint,marginBottom:"10px"}}>Set your bin collection day so the nudge messages include it</div>
+                <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
+                  {DAYS.map(d=><button key={d} className="btn" onClick={()=>saveState({schedule:{...schedule,day:d}})} style={{padding:"8px 13px",fontSize:"14px",fontWeight:schedule.day===d?"700":"400",background:schedule.day===d?T.text:T.bgCard2,color:schedule.day===d?T.bg:T.textMuted,border:`1px solid ${schedule.day===d?T.text:T.border}`}}>{d}</button>)}
                 </div>
-                <div>
-                  <div style={{fontSize:"13px",color:T.textFaint,marginBottom:"8px",fontWeight:"500"}}>Frequency</div>
-                  <div style={{display:"flex",gap:"6px"}}>
-                    {[{v:3.5,l:"Twice/week"},{v:3,l:"3 days"},{v:7,l:"Weekly"},{v:14,l:"Fortnightly"}].map(opt=><button key={opt.v} className="btn" onClick={()=>saveState({schedule:{...schedule,frequencyDays:opt.v}})} style={{padding:"5px 10px",fontSize:"12px",fontWeight:schedule.frequencyDays===opt.v?"600":"400",background:schedule.frequencyDays===opt.v?T.text:T.bgCard2,color:schedule.frequencyDays===opt.v?T.bg:T.textMuted,border:`1px solid ${schedule.frequencyDays===opt.v?T.text:T.border}`}}>{opt.l}</button>)}
-                  </div>
-                </div>
-                <div style={{fontSize:"13px",color:T.textFaint,background:T.bgCard2,borderRadius:"10px",padding:"10px 12px"}}>
-                  📅 Every <span style={{color:T.text,fontWeight:"600"}}>{schedule.frequencyDays===3?"3 days":schedule.frequencyDays===7?"week":"fortnight"}</span> on <span style={{color:T.text,fontWeight:"600"}}>{schedule.day}</span>
+                <div style={{fontSize:"13px",color:T.textFaint,background:T.bgCard2,borderRadius:"10px",padding:"10px 12px",marginTop:"12px"}}>
+                  📅 Collection day: <span style={{color:T.text,fontWeight:"600"}}>{schedule.day}</span>
                 </div>
               </div>
             </div>
@@ -1245,7 +1238,14 @@ export default function BinRota() {
                           <div style={{fontSize:"15px"}}><span style={{fontWeight:"600"}}>{h.personName}</span><span style={{color:T.textMuted}}>{h.skipped?" — turn skipped":h.awayCredit?" — was away (catch-up)":h.outOfTurn?" covered (not their turn)":`emptied ${bin?.label||h.binType}`}</span></div>
                           <div style={{fontSize:"12px",color:T.textFaint,marginTop:"2px"}}>{h.date}</div>
                         </div>
-                        <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.currentAccent,opacity:0.5,flexShrink:0}}/>
+                        {/* Admin: delete individual entry */}
+                        {isAdmin ? (
+                          <button className="btn" onClick={()=>{
+                            saveState({history: history.filter(e=>e.id!==h.id)});
+                          }} style={{background:"transparent",color:T.removeBtnText,padding:"4px 8px",fontSize:"16px",border:"none",opacity:0.6,flexShrink:0}}>✕</button>
+                        ) : (
+                          <div style={{width:"8px",height:"8px",borderRadius:"50%",background:T.currentAccent,opacity:0.5,flexShrink:0}}/>
+                        )}
                       </div>
                     );
                   })}
@@ -1257,7 +1257,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.4</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.5</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
