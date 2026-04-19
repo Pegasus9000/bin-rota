@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, off } from "firebase/database";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyCbOVsNGt4x0JhuUHaeSlKvqIPAjiqo6-U",
@@ -37,12 +36,10 @@ const BIN_TYPES = [
 ];
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
-// Initialise Firebase once at module level — avoids any timing issues
-const _app  = initializeApp(FIREBASE_CONFIG);
-const _db   = getDatabase(_app);
-const _auth = getAuth(_app);
-function getDB()          { return _db; }
-function getFirebaseAuth(){ return _auth; }
+// Initialise Firebase once at module level
+const _app = initializeApp(FIREBASE_CONFIG);
+const _db  = getDatabase(_app);
+function getDB() { return _db; }
 
 function getTurnCount(history, personId) {
   // Count unique turns (by turnId) — excludes outOfTurn entries
@@ -216,68 +213,26 @@ export default function BinRota() {
   const lastWriteId=useRef(null);
   const justDoneTimer=useRef(null);
 
-  // Firebase connection — sign in anonymously AND connect simultaneously.
-  // This avoids the "stuck on Connecting" issue on Brave/slow browsers.
+  // Firebase connection — direct, no auth required (rules allow open access to binrota path)
   useEffect(()=>{
-    let unsubDB = null;
-    let connected = false;
-
-    function connectToDB() {
-      if (connected) return;
-      connected = true;
-      try {
-        const db = getDB();
-        const dbRef = ref(db, DB_PATH);
-        unsubDB = onValue(dbRef, (snapshot) => {
-          const data = snapshot.val();
-          if (!data) { setConnStatus("live"); return; }
-          if (data._writeId && data._writeId === lastWriteId.current) {
-            setConnStatus("live"); return;
-          }
-          if (Array.isArray(data.residents) && data.residents.length > 0) setResidents(data.residents);
-          if (Array.isArray(data.history))  setHistory(data.history);
-          if (Array.isArray(data.alerts))   setAlerts(data.alerts);
-          if (data.schedule && typeof data.schedule === "object") setSchedule(data.schedule);
-          setForcedCurrentId(data.forcedCurrentId ?? null);
-          setForcedNextId(data.forcedNextId ?? null);
-          setConnStatus("live");
-        }, (e) => {
-          // Permission denied — auth needed. Auth effect will retry.
-          connected = false;
-          if (unsubDB) { off(ref(getDB(), DB_PATH), "value", unsubDB); unsubDB = null; }
-          console.warn("DB connect failed, waiting for auth:", e.code);
-        });
-      } catch(e) { setConnStatus("error"); }
-    }
-
-    // 1. Try connecting immediately (works if already authed or rules are open)
-    connectToDB();
-
-    // 2. Also sign in anonymously in parallel — if connection failed above,
-    //    this will trigger a reconnect once auth completes
-    const auth = getFirebaseAuth();
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        connectToDB(); // retry connection now that we are authed
-      } else {
-        signInAnonymously(auth).catch(() => {
-          // Auth blocked (e.g. Brave shields) — try connecting anyway
-          connectToDB();
-        });
+    let db;
+    try { db = getDB(); } catch(e) { setConnStatus("error"); return; }
+    const dbRef = ref(db, DB_PATH);
+    const unsub = onValue(dbRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) { setConnStatus("live"); return; }
+      if (data._writeId && data._writeId === lastWriteId.current) {
+        setConnStatus("live"); return;
       }
-    });
-
-    // 3. Hard timeout — if still connecting after 5s, force-retry
-    const timeout = setTimeout(() => {
-      connected = false;
-      connectToDB();
-    }, 5000);
-
-    return () => {
-      unsubAuth();
-      clearTimeout(timeout);
-      if (unsubDB) off(ref(getDB(), DB_PATH), "value", unsubDB);
-    };
+      if (Array.isArray(data.residents) && data.residents.length > 0) setResidents(data.residents);
+      if (Array.isArray(data.history))  setHistory(data.history);
+      if (Array.isArray(data.alerts))   setAlerts(data.alerts);
+      if (data.schedule && typeof data.schedule === "object") setSchedule(data.schedule);
+      setForcedCurrentId(data.forcedCurrentId ?? null);
+      setForcedNextId(data.forcedNextId ?? null);
+      setConnStatus("live");
+    }, (e) => { console.error(e); setConnStatus("error"); });
+    return () => off(dbRef, "value", unsub);
   }, []); // eslint-disable-line
 
   useEffect(()=>()=>{if(justDoneTimer.current)clearTimeout(justDoneTimer.current)},[]);
@@ -1257,7 +1212,7 @@ export default function BinRota() {
       </div>
 
       <div style={{textAlign:"center",padding:"24px 20px 32px",borderTop:`1px solid ${T.footerBorder}`,marginTop:"8px"}}>
-        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.5</span></div>
+        <div style={{fontSize:"12px",color:T.footerText,marginBottom:"6px"}}>Real-time sync · data stored securely in Firebase · <span style={{fontWeight:"600"}}>v3.6</span></div>
         <div style={{fontSize:"13px",color:T.textFaint}}>Made with ♥ by <span style={{color:T.currentAccent,fontWeight:"600"}}>Yassine</span></div>
       </div>
     </div>
