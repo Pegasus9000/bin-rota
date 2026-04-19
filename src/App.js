@@ -250,11 +250,6 @@ export default function BinRota() {
     if (patch.forcedNextId    !== undefined) setForcedNextId(patch.forcedNextId);
   }
 
-  function requireAdmin(fn) {
-    if (isAdmin) { fn(); return; }
-    setPendingAction(() => fn);
-    setShowPin(true);
-  }
   function onPinSuccess() {
     setIsAdmin(true); setShowPin(false);
     if (pendingAction) { pendingAction(); setPendingAction(null); }
@@ -371,7 +366,6 @@ export default function BinRota() {
       saveState({ alerts: [...alerts, { id: Date.now(), binType: binTypeId, binLabel: bin.label, reports: [name], ts: Date.now() }] });
     }
   }
-  function dismissAlert(binTypeId) { saveState({ alerts: alerts.filter(a => a.binType !== binTypeId) }); }
   function startEdit(r) { setEditingId(r.id); setEditingName(r.name); }
   function cancelEdit() { setEditingId(null); setEditingName(""); }
   function saveEdit(id) {
