@@ -340,13 +340,6 @@ export default function BinRota() {
     if (updated) saveState({ history: newHistory });
   }
 
-  function skipPersonTurn(person) {
-    const turnId = Date.now() + 9999;
-    const entry = { id: turnId, turnId, personId: person.id, personName: person.name,
-      binType: "skipped", skipped: true, date: new Date().toLocaleDateString("en-GB"), ts: turnId };
-    saveState({ history: [entry, ...stateRef.current.history].slice(0, 100) });
-  }
-
   // Tap green button → show bin picker for that bin (not both)
   function handleBinTap(binTypeId) {
     if (!currentPerson) return;
