@@ -325,6 +325,21 @@ export default function BinRota() {
     justDoneTimer.current = setTimeout(() => setJustDone(null), 8000);
   }
 
+  // Convert the most recent out-of-turn entry by this person into a real turn,
+  // so they advance in the rota and get skipped next time (fair to them).
+  function skipCovererTurn(coverer) {
+    const newHistory = [...stateRef.current.history];
+    // Find the most recent outOfTurn entry by this person and convert it
+    let updated = false;
+    for (let i = 0; i < newHistory.length; i++) {
+      if (newHistory[i].personId === coverer.id && newHistory[i].outOfTurn && !updated) {
+        newHistory[i] = { ...newHistory[i], outOfTurn: false };
+        updated = true;
+      }
+    }
+    if (updated) saveState({ history: newHistory });
+  }
+
   function skipPersonTurn(person) {
     const turnId = Date.now() + 9999;
     const entry = { id: turnId, turnId, personId: person.id, personName: person.name,
@@ -470,7 +485,7 @@ export default function BinRota() {
               { icon:"✅", title:"I just emptied a bin", body:"Tap the big green button for the bin you emptied. Pick your name. Done — the rota moves on." },
               { icon:"🗑️", title:"Both bins are full", body:"Tap either green button and choose 'Both bins' in the popup." },
               { icon:"🚨", title:"A bin is full but not your turn", body:"Tap Report Full. Pick your name. If 2 people report it, an urgent WhatsApp alert is generated." },
-              { icon:"🙌", title:"Emptied but not your turn", body:"Select your name — the app will ask if the current person's turn should be skipped for fairness." },
+              { icon:"🙌", title:"Emptied but not your turn", body:"Pick your name. The app asks if it should count as YOUR turn (so the rota skips you next time and stays fair). The original person stays as current." },
               { icon:"💬", title:"Send WhatsApp reminder", body:"Tap the WhatsApp button to send the rota status to the group." },
             ].map((step, i) => (
               <div key={i} style={{ display:"flex", gap:"14px", marginBottom:"18px", alignItems:"flex-start" }}>
@@ -617,21 +632,23 @@ export default function BinRota() {
       {showSkipConfirm && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px" }}>
           <div style={{ background:T.bgCard, borderRadius:"20px", padding:"28px 24px", width:"100%", maxWidth:"340px" }}>
-            <div style={{ fontSize:"36px", textAlign:"center", marginBottom:"8px" }}>⏭️</div>
-            <div style={{ fontSize:"17px", fontWeight:"700", textAlign:"center", color:T.text, marginBottom:"10px" }}>Skip {showSkipConfirm.skippedPerson.name}'s turn?</div>
+            <div style={{ fontSize:"36px", textAlign:"center", marginBottom:"8px" }}>🙌</div>
+            <div style={{ fontSize:"17px", fontWeight:"700", textAlign:"center", color:T.text, marginBottom:"10px" }}>
+              Thanks for covering!
+            </div>
             <div style={{ fontSize:"14px", color:T.textMuted, textAlign:"center", lineHeight:"1.6", marginBottom:"20px" }}>
-              <span style={{ fontWeight:"600", color:T.text }}>{showSkipConfirm.coveredBy.name}</span> just emptied the bins,
-              but it was <span style={{ fontWeight:"600", color:T.text }}>{showSkipConfirm.skippedPerson.name}'s</span> turn.
-              <br/><br/>Skip their turn so the rota stays fair?
+              It was <span style={{ fontWeight:"600", color:T.text }}>{showSkipConfirm.skippedPerson.name}'s</span> turn but <span style={{ fontWeight:"600", color:T.text }}>{showSkipConfirm.coveredBy.name}</span> did it.
+              <br/><br/>Should this count as <span style={{ fontWeight:"600", color:T.text }}>{showSkipConfirm.coveredBy.name}'s</span> turn so they get skipped next time?
+              <br/><br/><span style={{ fontSize:"12px", color:T.textFaint }}>({showSkipConfirm.skippedPerson.name} stays as current either way)</span>
             </div>
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
-              <button className="btn" onClick={() => { skipPersonTurn(showSkipConfirm.skippedPerson); setShowSkipConfirm(null); }}
+              <button className="btn" onClick={() => { skipCovererTurn(showSkipConfirm.coveredBy); setShowSkipConfirm(null); }}
                 style={{ padding:"14px", fontSize:"15px", fontWeight:"700", background:T.currentAccent, color:"#fff", border:"none" }}>
-                ✅ Yes — skip their turn
+                ✅ Yes — count it as {showSkipConfirm.coveredBy.name}'s turn
               </button>
               <button className="btn" onClick={() => setShowSkipConfirm(null)}
                 style={{ padding:"14px", fontSize:"15px", background:T.bgCard2, color:T.textMuted, border:`1px solid ${T.border}` }}>
-                No — keep {showSkipConfirm.skippedPerson.name} as current
+                No — just a favour, no rota change
               </button>
             </div>
           </div>
@@ -1067,7 +1084,7 @@ export default function BinRota() {
       </div>
 
       <div style={{ textAlign:"center", padding:"24px 20px 32px", borderTop:`1px solid ${T.footerBorder}`, marginTop:"8px" }}>
-        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.0</span></div>
+        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.1</span></div>
         <div style={{ fontSize:"13px", color:T.textFaint }}>Made with ♥ by <span style={{ color:T.currentAccent, fontWeight:"600" }}>Yassine</span></div>
       </div>
     </div>
