@@ -856,40 +856,78 @@ export default function BinRota() {
         {activeTab === "residents" && (
           <div className="fade-in" style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
 
-            {/* STREAK LEADERBOARD — simple view for flatmates */}
-            {history.length > 0 && (
-              <div>
-                <div style={sectionLabel}>🔥 Streak Leaderboard</div>
-                <div style={cardStyle}>
-                  {[...residents].sort((a, b) => {
-                    const sa = getStreak(history, a.id), sb = getStreak(history, b.id);
-                    return sb - sa || getTurnCount(history, b.id) - getTurnCount(history, a.id);
-                  }).map((r, idx, arr) => {
-                    const streak = getStreak(history, r.id);
-                    const total  = getTurnCount(history, r.id);
-                    const isTop  = streak > 0 && streak === getStreak(history, arr[0].id);
-                    return (
-                      <div key={r.id} style={{ padding:"13px 16px", borderBottom:idx<arr.length-1?`1px solid ${T.border}`:"none", display:"flex", alignItems:"center", gap:"12px" }}>
-                        <div style={{ width:"34px", height:"34px", borderRadius:"50%", flexShrink:0, background:isTop?T.streakBg:T.bgCard2, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"16px" }}>
-                          {isTop ? "🔥" : r.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                            <span style={{ fontSize:"15px", fontWeight:"600", color:T.text }}>{r.name}</span>
-                            {!r.active && <span style={{ fontSize:"10px", background:T.pillBg, color:T.textFaint, padding:"1px 6px", borderRadius:"10px" }}>✈️ Away</span>}
+            {/* COMPETITIVE LEADERBOARD — visible to everyone */}
+            {(() => {
+              const sorted = [...residents].sort((a,b) => getTurnCount(history,b.id) - getTurnCount(history,a.id));
+              const maxTurns = getTurnCount(history, sorted[0]?.id) || 1;
+              const totalTurns = sorted.reduce((s,r) => s + getTurnCount(history,r.id), 0);
+              const activePpl = sorted.filter(r=>r.active).length;
+              const fairShare = activePpl > 0 ? totalTurns / activePpl : 0;
+              const medals = ["🥇","🥈","🥉"];
+              // Bar colours: top (most turns) = red-orange, bottom (fewest) = green
+              const barColors = ["#ff3b30","#ff6b35","#ff9f0a","#f59e0b","#34c759","#30d158"];
+              return (
+                <div>
+                  <div style={sectionLabel}>🏆 Who's Done the Most?</div>
+                  <div style={{ background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:"20px", overflow:"hidden" }}>
+                    {/* Header summary */}
+                    <div style={{ padding:"14px 18px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:"13px", color:T.textFaint }}>Total empties: <span style={{ fontWeight:"700", color:T.text }}>{totalTurns}</span></div>
+                      <div style={{ fontSize:"13px", color:T.textFaint }}>Fair share: <span style={{ fontWeight:"700", color:T.text }}>{Math.round(fairShare)}</span> each</div>
+                    </div>
+                    {sorted.map((r, idx) => {
+                      const turns = getTurnCount(history, r.id);
+                      const barPct = maxTurns > 0 ? Math.max(4, Math.round((turns/maxTurns)*100)) : 4;
+                      const diff = turns - Math.round(fairShare);
+                      const isOver = diff > 0, isUnder = diff < 0;
+                      const barColor = barColors[Math.min(idx, barColors.length-1)];
+                      const isCurrent = r.id === currentPerson?.id;
+                      const lastEntry = history.filter(h=>h.personId===r.id&&!h.outOfTurn&&!h.awayCredit&&!h.skipped)[0];
+                      return (
+                        <div key={r.id} style={{ padding:"14px 18px", borderBottom:idx<sorted.length-1?`1px solid ${T.border}`:"none", background:isCurrent?T.currentBg:"transparent" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"8px" }}>
+                            {/* Rank badge */}
+                            <div style={{ width:"28px", textAlign:"center", flexShrink:0, fontSize:idx<3?"20px":"14px", fontWeight:"700", color:T.textFaint }}>
+                              {idx<3 ? medals[idx] : `#${idx+1}`}
+                            </div>
+                            {/* Avatar */}
+                            <div style={{ width:"36px", height:"36px", borderRadius:"50%", flexShrink:0, background:barColor+"22", border:`2px solid ${barColor}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"15px", fontWeight:"800", color:barColor }}>
+                              {r.name.charAt(0).toUpperCase()}
+                            </div>
+                            {/* Name + status */}
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                                <span style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>{r.name}</span>
+                                {isCurrent && <span style={{ fontSize:"10px", background:T.currentAccentBg, color:T.currentAccent, padding:"2px 7px", borderRadius:"20px", fontWeight:"700" }}>Current</span>}
+                                {!r.active && <span style={{ fontSize:"10px", background:T.pillBg, color:T.textFaint, padding:"2px 7px", borderRadius:"20px" }}>✈️ Away</span>}
+                              </div>
+                              <div style={{ fontSize:"11px", color:T.textFaint, marginTop:"1px" }}>Last: {lastEntry?.date||"Never"}</div>
+                            </div>
+                            {/* Turn count + badge */}
+                            <div style={{ textAlign:"right", flexShrink:0 }}>
+                              <div style={{ fontSize:"22px", fontWeight:"900", color:barColor, lineHeight:1 }}>{turns}</div>
+                              <div style={{ fontSize:"10px", fontWeight:"600", marginTop:"2px", color:isOver?"#ff3b30":isUnder?T.currentAccent:"#f59e0b" }}>
+                                {isOver ? `+${diff} over` : isUnder ? `${diff} under` : "on track"}
+                              </div>
+                            </div>
                           </div>
-                          <div style={{ fontSize:"12px", color:T.textFaint, marginTop:"1px" }}>{total} turn{total!==1?"s":""}</div>
+                          {/* Horizontal bar */}
+                          <div style={{ marginLeft:"38px", height:"10px", background:T.bgCard2, borderRadius:"5px", overflow:"hidden" }}>
+                            <div style={{ height:"100%", width:`${barPct}%`, background:`linear-gradient(90deg,${barColor}cc,${barColor})`, borderRadius:"5px", transition:"width 0.6s cubic-bezier(0.34,1.56,0.64,1)" }}/>
+                          </div>
                         </div>
-                        {streak > 0
-                          ? <div style={{ fontSize:"14px", fontWeight:"700", color:T.streakGold }}>{streak} 🔥</div>
-                          : <div style={{ fontSize:"13px", color:T.textVeryFaint }}>—</div>
-                        }
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                    {/* Legend */}
+                    <div style={{ padding:"10px 18px", borderTop:`1px solid ${T.border}`, display:"flex", gap:"16px", justifyContent:"center" }}>
+                      <div style={{ fontSize:"11px", color:T.textFaint, display:"flex", alignItems:"center", gap:"4px" }}><span style={{ width:"10px", height:"10px", borderRadius:"50%", background:"#ff3b30", display:"inline-block" }}/> Most</div>
+                      <div style={{ fontSize:"11px", color:T.textFaint, display:"flex", alignItems:"center", gap:"4px" }}><span style={{ width:"10px", height:"10px", borderRadius:"50%", background:"#34c759", display:"inline-block" }}/> Fewest</div>
+                      <div style={{ fontSize:"11px", color:T.textFaint, display:"flex", alignItems:"center", gap:"4px" }}><span style={{ width:"10px", height:"10px", borderRadius:"50%", background:"#f59e0b", display:"inline-block" }}/> On track</div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ── ADMIN SECTION (hidden from flatmates) ── */}
             {isAdmin && (
@@ -976,8 +1014,8 @@ export default function BinRota() {
               </>
             )}
 
-            {/* RESIDENTS LIST */}
-            <div style={cardStyle}>
+            {/* RESIDENTS LIST — admin only (flatmates see the leaderboard above) */}
+            {isAdmin && <div style={cardStyle}>
               {residents.length === 0 && <div style={{ padding:"28px", textAlign:"center", color:T.textFaint, fontSize:"14px" }}>No residents yet.</div>}
               {residents.map((r, idx) => {
                 const isCurrent = r.id === currentPerson?.id;
@@ -1021,7 +1059,7 @@ export default function BinRota() {
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
         )}
 
@@ -1077,7 +1115,7 @@ export default function BinRota() {
       </div>
 
       <div style={{ textAlign:"center", padding:"24px 20px 32px", borderTop:`1px solid ${T.footerBorder}`, marginTop:"8px" }}>
-        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.1</span></div>
+        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.2</span></div>
         <div style={{ fontSize:"13px", color:T.textFaint }}>Made with ♥ by <span style={{ color:T.currentAccent, fontWeight:"600" }}>Yassine</span></div>
       </div>
     </div>
