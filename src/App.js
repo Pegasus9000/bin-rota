@@ -84,16 +84,6 @@ function applyReturnFromAway(history, person, residents) {
   return [...entries, ...history].slice(0, 100);
 }
 
-function getStreak(history, residentId) {
-  if (!history.length) return 0;
-  let streak = 0;
-  for (const entry of history) {
-    if (entry.personId === residentId && !entry.skipped && !entry.awayCredit) streak++;
-    else break;
-  }
-  return streak;
-}
-
 function isOverdue(history) {
   if (!history.length) return false;
   return (Date.now() - history[0].ts) / (1000 * 60 * 60 * 24) > 7;
