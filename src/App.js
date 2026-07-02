@@ -192,6 +192,7 @@ export default function BinRota() {
   const [showBinPicker,       setShowBinPicker]       = useState(null); // binTypeId
   const [showWhoAreYou,       setShowWhoAreYou]       = useState(null);
   const [showSkipConfirm,     setShowSkipConfirm]     = useState(null);
+  const [showFinalConfirm,    setShowFinalConfirm]    = useState(null); // {person, binTypeIds, outOfTurn}
   const [showConfirm,         setShowConfirm]         = useState(null);
   const [showHelp,            setShowHelp]            = useState(false);
   const [showFairnessStats,   setShowFairnessStats]   = useState(false);
@@ -345,6 +346,13 @@ export default function BinRota() {
     setShowWhoAreYou(null);
     if (!person) return;
     const outOfTurn = currentPerson && person.id !== currentPerson.id;
+    // Final confirmation before logging — prevents accidental or fake taps
+    setShowFinalConfirm({ person, binTypeIds, outOfTurn });
+  }
+
+  function onFinalConfirmYes() {
+    const { person, binTypeIds, outOfTurn } = showFinalConfirm;
+    setShowFinalConfirm(null);
     if (outOfTurn) {
       doMarkEmptied(person, binTypeIds, true);
       setShowSkipConfirm({ skippedPerson: currentPerson, coveredBy: person });
@@ -613,6 +621,33 @@ export default function BinRota() {
       )}
 
       {/* SKIP CONFIRM */}
+      {/* FINAL CONFIRM — hand on heart */}
+      {showFinalConfirm && (() => {
+        const binLabels = showFinalConfirm.binTypeIds.map(id => BIN_TYPES.find(b => b.id === id)?.label).join(" & ");
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:105, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px" }}>
+            <div style={{ background:T.bgCard, borderRadius:"20px", padding:"28px 24px", width:"100%", maxWidth:"340px" }}>
+              <div style={{ fontSize:"44px", textAlign:"center", marginBottom:"8px" }}>🫡</div>
+              <div style={{ fontSize:"18px", fontWeight:"700", textAlign:"center", color:T.text, marginBottom:"8px" }}>Hand on heart, {showFinalConfirm.person.name}…</div>
+              <div style={{ fontSize:"14px", color:T.textMuted, textAlign:"center", lineHeight:"1.6", marginBottom:"22px" }}>
+                Did you REALLY empty the <span style={{ fontWeight:"700", color:T.text }}>{binLabels}</span>?
+                <br/><span style={{ fontSize:"12px", color:T.textFaint }}>The bins are watching. They know. 👀🗑️</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
+                <button className="btn" onClick={onFinalConfirmYes}
+                  style={{ padding:"14px", fontSize:"15px", fontWeight:"700", background:T.currentAccent, color:"#fff", border:"none" }}>
+                  ✅ Yes, I swear on the bins
+                </button>
+                <button className="btn" onClick={() => setShowFinalConfirm(null)}
+                  style={{ padding:"14px", fontSize:"15px", background:T.bgCard2, color:T.textMuted, border:`1px solid ${T.border}` }}>
+                  😅 Actually, no — cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showSkipConfirm && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px" }}>
           <div style={{ background:T.bgCard, borderRadius:"20px", padding:"28px 24px", width:"100%", maxWidth:"340px" }}>
@@ -1106,7 +1141,7 @@ export default function BinRota() {
       </div>
 
       <div style={{ textAlign:"center", padding:"24px 20px 32px", borderTop:`1px solid ${T.footerBorder}`, marginTop:"8px" }}>
-        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.3</span></div>
+        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.4</span></div>
         <div style={{ fontSize:"13px", color:T.textFaint }}>Made with ♥ by <span style={{ color:T.currentAccent, fontWeight:"600" }}>Yassine</span></div>
       </div>
     </div>
