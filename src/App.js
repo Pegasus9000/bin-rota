@@ -50,6 +50,13 @@ function getTurnCount(history, personId) {
   return new Set(rota.map(h => h.turnId || h.id)).size;
 }
 
+// Rota score = REAL turns + baseline. The baseline is a head start given to people who
+// joined late or came back from away, so they slot in level with the group instead of
+// doing several turns in a row. Leaderboards still show real turns only.
+function getRotaScore(history, r) {
+  return getTurnCount(history, r.id) + (r.baseline || 0);
+}
+
 function getNextPersonIndex(history, residents, forcedId = null) {
   if (forcedId !== null) {
     const fi = residents.findIndex(r => r.id === forcedId && r.active);
@@ -57,7 +64,7 @@ function getNextPersonIndex(history, residents, forcedId = null) {
   }
   const active = residents.filter(r => r.active);
   if (!active.length) return -1;
-  const counts = active.map(r => ({ id: r.id, count: getTurnCount(history, r.id) }));
+  const counts = active.map(r => ({ id: r.id, count: getRotaScore(history, r) }));
   counts.sort((a, b) => a.count - b.count);
   return residents.findIndex(r => r.id === counts[0].id);
 }
@@ -65,23 +72,19 @@ function getNextPersonIndex(history, residents, forcedId = null) {
 function getGroupAverageExcluding(history, residents, excludeId) {
   const others = residents.filter(r => r.active && r.id !== excludeId);
   if (!others.length) return 0;
-  const total = others.reduce((sum, r) => sum + getTurnCount(history, r.id), 0);
+  const total = others.reduce((sum, r) => sum + getRotaScore(history, r), 0);
   return Math.floor(total / others.length);
 }
 
-function applyReturnFromAway(history, person, residents) {
-  const avg = getGroupAverageExcluding(history, residents, person.id);
-  const current = getTurnCount(history, person.id);
-  const catchUp = Math.max(0, avg - current);
-  if (catchUp === 0) return history;
-  const now = Date.now();
-  const entries = Array.from({ length: catchUp }, (_, i) => ({
-    id: now + i, turnId: now + i,
-    personId: person.id, personName: person.name,
-    binType: "away", awayCredit: true,
-    date: new Date().toLocaleDateString("en-GB"), ts: now + i,
-  }));
-  return [...entries, ...history].slice(0, 100);
+// Raise a person's baseline so they start level with the group average.
+// Never lowers anyone, and never touches their real turn count.
+function balanceToAverage(history, residents, personId) {
+  const person = residents.find(r => r.id === personId);
+  if (!person) return residents;
+  const avg = getGroupAverageExcluding(history, residents, personId);
+  const boost = Math.max(0, avg - getRotaScore(history, person));
+  if (!boost) return residents;
+  return residents.map(r => r.id === personId ? { ...r, baseline: (r.baseline || 0) + boost } : r);
 }
 
 function isOverdue(history) {
@@ -385,8 +388,7 @@ export default function BinRota() {
     const isReturning = person && !person.active;
     const newResidents = residents.map(r => r.id === id ? { ...r, active: !r.active } : r);
     if (isReturning) {
-      const updatedHistory = applyReturnFromAway(history, person, newResidents);
-      saveState({ residents: newResidents, history: updatedHistory });
+      saveState({ residents: balanceToAverage(history, newResidents, id) });
     } else {
       saveState({ residents: newResidents });
     }
@@ -398,7 +400,8 @@ export default function BinRota() {
   function addResident() {
     const t = addingName.trim(); if (!t) return;
     const newId = Math.max(0, ...residents.map(r => r.id)) + 1;
-    saveState({ residents: [...residents, { id: newId, name: t, active: true }] });
+    const withNew = [...residents, { id: newId, name: t, active: true, baseline: 0 }];
+    saveState({ residents: balanceToAverage(history, withNew, newId) });
     setAddingName(""); setShowAddForm(false);
   }
 
@@ -888,7 +891,7 @@ export default function BinRota() {
               const maxTurns = getTurnCount(history, sorted[0]?.id) || 1;
               const totalTurns = sorted.reduce((s,r) => s + getTurnCount(history,r.id), 0);
               const activePpl = sorted.filter(r=>r.active).length;
-              const fairShare = activePpl > 0 ? totalTurns / activePpl : 0;
+              const fairShare = activePpl > 0 ? sorted.filter(r => r.active).reduce((s, r) => s + getRotaScore(history, r), 0) / activePpl : 0;
               const medals = ["🥇","🥈","🥉"];
               // Bar colours: top (most turns) = red-orange, bottom (fewest) = green
               const barColors = ["#ff3b30","#ff6b35","#ff9f0a","#f59e0b","#34c759","#30d158"];
@@ -904,7 +907,7 @@ export default function BinRota() {
                     {sorted.map((r, idx) => {
                       const turns = getTurnCount(history, r.id);
                       const barPct = maxTurns > 0 ? Math.max(4, Math.round((turns/maxTurns)*100)) : 4;
-                      const diff = turns - Math.round(fairShare);
+                      const diff = getRotaScore(history, r) - Math.round(fairShare);
                       const isOver = diff > 0, isUnder = diff < 0;
                       const barColor = barColors[Math.min(idx, barColors.length-1)];
                       const isCurrent = r.id === currentPerson?.id;
@@ -967,7 +970,7 @@ export default function BinRota() {
                   <button className="btn" onClick={() => setShowConfirm({
                     emoji:"🔁", title:"Reset the whole rota?", body:"Clears all turns and history. Cannot be undone.",
                     confirmLabel:"Yes, reset everything", confirmColor:T.removeBtnText,
-                    onConfirm: () => saveState({ history:[], alerts:[], forcedCurrentId:null, forcedNextId:null }),
+                    onConfirm: () => saveState({ history:[], alerts:[], residents: residents.map(r => ({ ...r, baseline: 0 })), forcedCurrentId:null, forcedNextId:null }),
                   })} style={{ flex:1, padding:"11px", fontSize:"13px", fontWeight:"600", background:T.bgCard, color:T.removeBtnText, border:`1.5px solid ${T.alertBorder}` }}>
                     🔁 Reset Rota
                   </button>
@@ -978,7 +981,7 @@ export default function BinRota() {
                   const sorted = [...residents].sort((a, b) => getTurnCount(history, b.id) - getTurnCount(history, a.id));
                   const maxTurns = getTurnCount(history, sorted[0]?.id) || 1;
                   const totalTurns = sorted.reduce((s, r) => s + getTurnCount(history, r.id), 0);
-                  const fairShare = totalTurns > 0 ? (totalTurns / sorted.filter(r => r.active).length) : 0;
+                  const fairShare = totalTurns > 0 ? (sorted.filter(r => r.active).reduce((s, r) => s + getRotaScore(history, r), 0) / Math.max(1, sorted.filter(r => r.active).length)) : 0;
                   const medals = ["🥇","🥈","🥉"];
                   return (
                     <div className="fade-in" style={{ background:T.bgCard, border:`1px solid ${T.border}`, borderRadius:"16px", overflow:"hidden" }}>
@@ -990,7 +993,7 @@ export default function BinRota() {
                         const turns = getTurnCount(history, r.id);
                         const barPct = Math.round((turns / maxTurns) * 100);
                         const lastEntry = history.filter(h => h.personId === r.id && !h.outOfTurn && !h.awayCredit && !h.skipped)[0];
-                        const diff = turns - Math.round(fairShare);
+                        const diff = getRotaScore(history, r) - Math.round(fairShare);
                         const isOver = diff > 0, isUnder = diff < 0;
                         const barColor = isOver ? "#ff3b30" : isUnder ? T.currentAccent : "#f59e0b";
                         return (
@@ -1074,6 +1077,7 @@ export default function BinRota() {
                         <Toggle checked={r.active} onChange={() => toggleActive(r.id)} color={T.toggleColor}/>
                         <button className="btn" onClick={() => startEdit(r)} style={{ background:"transparent", color:T.textFaint, padding:"4px", fontSize:"17px" }}>✏️</button>
                         <button className="btn" onClick={() => deleteResident(r.id)} style={{ background:"transparent", color:T.removeBtnText, padding:"4px", fontSize:"17px", opacity:0.6 }}>🗑️</button>
+                        <button className="btn" onClick={() => saveState({ residents: balanceToAverage(history, residents, r.id) })} style={{ background:"transparent", color:T.textMuted, padding:"4px 7px", fontSize:"13px", border:`1px solid ${T.border}`, borderRadius:"8px" }}>⚖️</button>
                         <button className="btn" onClick={() => saveState({ forcedCurrentId: forcedCurrentId===r.id?null:r.id })} style={{ background:forcedCurrentId===r.id?T.currentAccent:"transparent", color:forcedCurrentId===r.id?"#fff":T.currentAccent, padding:"4px 7px", fontSize:"12px", fontWeight:"700", border:`1px solid ${T.currentAccent}`, borderRadius:"8px" }}>
                           {forcedCurrentId===r.id ? "★ Now" : "☆"}
                         </button>
@@ -1096,7 +1100,7 @@ export default function BinRota() {
               <button className="btn" onClick={() => setShowConfirm({
                 emoji:"🗑️", title:"Clear all history?", body:"Permanently deletes the log. Cannot be undone.",
                 confirmLabel:"Yes, clear history", confirmColor:T.removeBtnText,
-                onConfirm: () => saveState({ history:[] }),
+                onConfirm: () => saveState({ history:[], residents: residents.map(r => ({ ...r, baseline: 0 })) }),
               })} style={{ width:"100%", padding:"12px", fontSize:"13px", fontWeight:"600", background:T.bgCard, color:T.removeBtnText, border:`1.5px solid ${T.alertBorder}` }}>
                 🗑️ Clear All History (admin)
               </button>
@@ -1141,7 +1145,7 @@ export default function BinRota() {
       </div>
 
       <div style={{ textAlign:"center", padding:"24px 20px 32px", borderTop:`1px solid ${T.footerBorder}`, marginTop:"8px" }}>
-        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.4</span></div>
+        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.5</span></div>
         <div style={{ fontSize:"13px", color:T.textFaint }}>Made with ♥ by <span style={{ color:T.currentAccent, fontWeight:"600" }}>Yassine</span></div>
       </div>
     </div>
