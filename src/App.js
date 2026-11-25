@@ -64,8 +64,10 @@ function getNextPersonIndex(history, residents, forcedId = null) {
   }
   const active = residents.filter(r => r.active);
   if (!active.length) return -1;
-  const counts = active.map(r => ({ id: r.id, count: getRotaScore(history, r) }));
-  counts.sort((a, b) => a.count - b.count);
+  // Ties go to whoever did a real turn longest ago (never = first), not to list order.
+  const lastTurn = id => Math.max(0, ...history.filter(h => h.personId === id && !h.outOfTurn && !h.awayCredit && !h.skipped).map(h => h.ts ?? Infinity));
+  const counts = active.map(r => ({ id: r.id, count: getRotaScore(history, r), last: lastTurn(r.id) }));
+  counts.sort((a, b) => a.count - b.count || a.last - b.last);
   return residents.findIndex(r => r.id === counts[0].id);
 }
 
