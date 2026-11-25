@@ -132,22 +132,29 @@ function PinModal({ onSuccess, onCancel, T }) {
 }
 
 export default function BinRota() {
+  // Follows the phone's light/dark setting live; the toggle overrides it until the setting changes or the page reloads.
   const [isDark, setIsDark] = useState(() => {
-    try { const s = localStorage.getItem("binrota-theme"); if (s) return s === "dark"; } catch(e) {}
-    return false;
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
   });
-  function toggleTheme() {
-    setIsDark(v => { try { localStorage.setItem("binrota-theme", !v?"dark":"light"); } catch(e) {} return !v; });
-  }
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const onChange = e => setIsDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  function toggleTheme() { setIsDark(v => !v); }
 
   const [showWelcome, setShowWelcome] = useState(() => {
     try { return !localStorage.getItem("binrota-visited"); } catch(e) { return false; }
   });
 
   const T = isDark ? {
-    bg:"#1c1c1e", bgCard:"#2c2c2e", bgCard2:"#3a3a3c", bgInput:"#1c1c1e",
-    border:"#3a3a3c", text:"#ffffff", textMuted:"#aeaeb2", textFaint:"#636366", textVeryFaint:"#3a3a3c",
-    currentBg:"#0d2818", currentBorder:"#1a5c35", currentAccent:"#30d158", currentAccentBg:"#0d3320",
+    bg:"#111214", bgCard:"#1c1d20", bgCard2:"#26272b", bgInput:"#111214",
+    border:"#2c2d31", text:"#f4f4f5", textMuted:"#a1a1aa", textFaint:"#6b6b73", textVeryFaint:"#3a3a3f",
+    currentBg:"#14201a", currentBorder:"#1f5c35", currentAccent:"#4ade80", currentAccentBg:"#13261a",
+    ink:"#f4f4f5", onInk:"#111214", binGeneralBg:"#26292f",
+    streakBg:"#2a1d0c", streakText:"#fdba74",
     alertBg:"#2d0f0f", alertBorder:"#5c1a1a", alertText:"#ff453a", alertSubtext:"#bf4040",
     urgentBg:"#3d1a00", urgentBorder:"#ff6b00", urgentText:"#ff9500",
     overdueBg:"#2d1a00", overdueBorder:"#cc7a00", overdueText:"#ffb300",
@@ -155,11 +162,12 @@ export default function BinRota() {
     syncActive:"#30d158", syncIdle:"#48484a", toggleColor:"#30d158", pillBg:"#3a3a3c",
     waGreen:"#25d366", waBg:"#0d2d1a", waBorder:"#1a5c35",
     adminBg:"#1a1a2e", adminBorder:"#3a3a6e", adminText:"#a0a0ff",
-    streakGold:"#ffd60a", streakBg:"#2a2000",
   } : {
-    bg:"#f2f2f7", bgCard:"#ffffff", bgCard2:"#f2f2f7", bgInput:"#ffffff",
-    border:"#e5e5ea", text:"#000000", textMuted:"#6e6e73", textFaint:"#aeaeb2", textVeryFaint:"#d1d1d6",
-    currentBg:"#f0fff4", currentBorder:"#34c759", currentAccent:"#34c759", currentAccentBg:"#d1f7dc",
+    bg:"#f7f7f5", bgCard:"#ffffff", bgCard2:"#f2f2f0", bgInput:"#ffffff",
+    border:"#ececec", text:"#1c1c1e", textMuted:"#6e6e73", textFaint:"#a1a1a6", textVeryFaint:"#d1d1d6",
+    currentBg:"#f1fbf4", currentBorder:"#cfeedd", currentAccent:"#1f9d4c", currentAccentBg:"#e3f6e8",
+    ink:"#1c1c1e", onInk:"#ffffff", binGeneralBg:"#eef0f3",
+    streakBg:"#fff4e5", streakText:"#8a4b00",
     alertBg:"#fff2f2", alertBorder:"#ff3b30", alertText:"#ff3b30", alertSubtext:"#cc2f26",
     urgentBg:"#fff3e0", urgentBorder:"#ff6b00", urgentText:"#e65100",
     overdueBg:"#fffbea", overdueBorder:"#f59e0b", overdueText:"#b45309",
@@ -167,7 +175,6 @@ export default function BinRota() {
     syncActive:"#34c759", syncIdle:"#d1d1d6", toggleColor:"#34c759", pillBg:"#e5e5ea",
     waGreen:"#25d366", waBg:"#f0fff8", waBorder:"#34c759",
     adminBg:"#f0f0ff", adminBorder:"#c0c0ff", adminText:"#5050cc",
-    streakGold:"#f59e0b", streakBg:"#fffbea",
   };
 
   // State
@@ -434,8 +441,9 @@ export default function BinRota() {
     <div style={{ minHeight:"100vh", background:T.bg, color:T.text, fontFamily:FONT, transition:"background 0.25s, color 0.25s" }}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{background:${T.bg};color-scheme:${isDark ? "dark" : "light"};}
         ::-webkit-scrollbar{width:0;}
-        .btn{cursor:pointer;border:none;font-family:${FONT};transition:opacity 0.12s,transform 0.1s;border-radius:10px;font-weight:500;}
+        .btn{cursor:pointer;border:none;font-family:${FONT};transition:opacity 0.12s,transform 0.1s;border-radius:12px;font-weight:500;}
         .btn:hover{opacity:0.78;}
         .btn:active{transform:scale(0.96);opacity:0.6;}
         .btn:disabled{opacity:0.35;cursor:not-allowed;transform:none;}
@@ -696,7 +704,7 @@ export default function BinRota() {
       )}
 
       {/* HEADER */}
-      <div style={{ background:T.bgCard, borderBottom:`1px solid ${T.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10 }}>
+      <div style={{ background:T.bg, borderBottom:`1px solid ${T.border}`, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10 }}>
         <div>
           <div style={{ fontSize:"22px", fontWeight:"700", letterSpacing:"-0.5px" }}>Bin Rota</div>
           <div style={{ fontSize:"13px", color:T.textFaint, marginTop:"1px" }}>{activeResidents.length} active · {residents.length - activeResidents.length} away</div>
@@ -750,7 +758,7 @@ export default function BinRota() {
       <div style={{ display:"flex", padding:"12px 16px 0", gap:"6px" }}>
         {[["rota","🏠 Rota"],["residents","👥 Residents"],["history","📋 History"]].map(([id, lbl]) => (
           <button key={id} className="btn" onClick={() => setActiveTab(id)}
-            style={{ flex:1, padding:"10px 8px", fontSize:"14px", fontWeight:activeTab===id?"700":"500", background:activeTab===id?T.bgCard:"transparent", color:activeTab===id?T.text:T.textFaint, border:activeTab===id?`1px solid ${T.border}`:"1px solid transparent", textAlign:"center" }}>{lbl}</button>
+            style={{ flex:1, padding:"9px 8px", fontSize:"14px", borderRadius:"20px", fontWeight:activeTab===id?"700":"500", background:activeTab===id?T.ink:"transparent", color:activeTab===id?T.onInk:T.textMuted, border:`1px solid ${activeTab===id?T.ink:T.border}`, textAlign:"center" }}>{lbl}</button>
         ))}
       </div>
 
@@ -774,10 +782,15 @@ export default function BinRota() {
 
             {/* CURRENT TURN CARD — the main event */}
             {currentPerson ? (
-              <div style={{ background:T.currentBg, border:`2px solid ${T.currentBorder}`, borderRadius:"24px", padding:"28px 24px", textAlign:"center" }}>
-                <div style={{ fontSize:"13px", fontWeight:"700", color:T.currentAccent, textTransform:"uppercase", letterSpacing:"1px", marginBottom:"8px" }}>It's your turn</div>
-                <div style={{ fontSize:"44px", fontWeight:"800", letterSpacing:"-1px", color:T.text, marginBottom:"8px" }}>{currentPerson.name}</div>
-                {upNext && <div style={{ fontSize:"14px", color:T.textFaint }}>Up next: <span style={{ color:T.textMuted, fontWeight:"600" }}>{upNext.name}</span></div>}
+              <div style={{ ...cardStyle, borderRadius:"24px", padding:"20px", display:"flex", alignItems:"center", gap:"16px" }}>
+                <div style={{ width:"64px", height:"64px", borderRadius:"50%", flexShrink:0, background:T.currentAccentBg, color:T.currentAccent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"28px", fontWeight:"800" }}>
+                  {currentPerson.name.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:"12px", fontWeight:"700", color:T.currentAccent, textTransform:"uppercase", letterSpacing:"1px" }}>It's your turn</div>
+                  <div style={{ fontSize:"36px", fontWeight:"800", letterSpacing:"-1px", color:T.text, lineHeight:1.15, overflowWrap:"anywhere" }}>{currentPerson.name}</div>
+                  {upNext && <div style={{ fontSize:"14px", color:T.textFaint, marginTop:"2px" }}>Up next: <span style={{ color:T.textMuted, fontWeight:"600" }}>{upNext.name}</span></div>}
+                </div>
               </div>
             ) : (
               <div style={{ ...cardStyle, padding:"24px", textAlign:"center", color:T.textFaint, fontSize:"15px" }}>No active residents.</div>
@@ -785,13 +798,13 @@ export default function BinRota() {
 
             {/* HOUSE STREAK — hidden while a bin is reported full (the red buttons say enough) */}
             {alerts.length === 0 && (
-              <div style={{ ...cardStyle, padding:"12px 16px", display:"flex", alignItems:"center", gap:"12px" }}>
+              <div style={{ background:T.streakBg, color:T.streakText, borderRadius:"16px", padding:"12px 16px", display:"flex", alignItems:"center", gap:"12px" }}>
                 <div style={{ fontSize:"26px" }}>{streakDays > 0 ? "🔥" : "🌱"}</div>
                 <div>
-                  <div style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>
+                  <div style={{ fontSize:"15px", fontWeight:"700" }}>
                     {streakDays > 0 ? `${streakDays} day${streakDays === 1 ? "" : "s"} with no full-bin reports` : "New house streak starts today"}
                   </div>
-                  <div style={{ fontSize:"12px", color:T.textFaint, marginTop:"2px" }}>Everyone keeps this going. It resets when a bin is reported full.</div>
+                  <div style={{ fontSize:"12px", opacity:0.8, marginTop:"2px" }}>Everyone keeps this going. It resets when a bin is reported full.</div>
                 </div>
               </div>
             )}
@@ -825,23 +838,22 @@ export default function BinRota() {
                   );
                 }
 
+                const tone = isUrgent ? T.urgentBorder : isFull ? T.alertText : null;
                 return (
-                  <button key={bin.id} className="btn" onClick={() => handleBinTap(bin.id)} disabled={!currentPerson}
-                    style={{ width:"100%", borderRadius:"20px", border:"none",
-                      background: isUrgent ? "linear-gradient(135deg,#ff6b00,#e65100)"
-                        : isFull ? "linear-gradient(135deg,#ff3b30,#c0392b)"
-                        : isDark ? "linear-gradient(135deg,#30d158,#28a745)"
-                        : "linear-gradient(135deg,#34c759,#2dbe55)",
-                      display:"flex", alignItems:"center", overflow:"hidden",
-                      boxShadow: isFull ? "0 6px 24px rgba(255,59,48,0.4)" : "0 6px 24px rgba(52,199,89,0.35)" }}>
-                    <div style={{ width:"84px", height:"84px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"38px", background:"rgba(0,0,0,0.12)", flexShrink:0 }}>{bin.emoji}</div>
-                    <div style={{ flex:1, textAlign:"left", paddingLeft:"18px", paddingRight:"14px" }}>
-                      <div style={{ fontSize:"11px", fontWeight:"700", color:"rgba(255,255,255,0.8)", textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:"3px" }}>
+                  <button key={bin.id} className={isUrgent ? "btn urgent-pulse" : "btn"} onClick={() => handleBinTap(bin.id)} disabled={!currentPerson}
+                    style={{ width:"100%", borderRadius:"20px", padding:"12px 14px", textAlign:"left", color:T.text,
+                      background: isUrgent ? T.urgentBg : isFull ? T.alertBg : T.bgCard,
+                      border:`1.5px solid ${tone || T.border}`,
+                      display:"flex", alignItems:"center", gap:"14px" }}>
+                    <div style={{ width:"56px", height:"56px", borderRadius:"16px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"28px", flexShrink:0,
+                      background: tone ? tone + "22" : bin.id === "recycling" ? T.currentAccentBg : T.binGeneralBg }}>{bin.emoji}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:"11px", fontWeight:"700", color: tone || T.textFaint, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:"2px" }}>
                         {isUrgent ? "🚨 URGENT — Tap to confirm" : isFull ? "⚠️ Reported full — Tap to confirm" : "I emptied"}
                       </div>
-                      <div style={{ fontSize:"22px", fontWeight:"800", color:"#fff" }}>{bin.label}</div>
+                      <div style={{ fontSize:"20px", fontWeight:"800" }}>{bin.label}</div>
                     </div>
-                    <div style={{ width:"52px", height:"84px", display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.1)", flexShrink:0, fontSize:"26px", color:"rgba(255,255,255,0.85)" }}>✓</div>
+                    <div style={{ background: tone || T.ink, color: tone ? "#fff" : T.onInk, fontSize:"13px", fontWeight:"700", borderRadius:"20px", padding:"8px 14px", flexShrink:0 }}>✓ Done</div>
                   </button>
                 );
               })}
@@ -1186,7 +1198,7 @@ export default function BinRota() {
       </div>
 
       <div style={{ textAlign:"center", padding:"24px 20px 32px", borderTop:`1px solid ${T.footerBorder}`, marginTop:"8px" }}>
-        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.6</span></div>
+        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.7</span></div>
         <div style={{ fontSize:"13px", color:T.textFaint }}>Made with ♥ by <span style={{ color:T.currentAccent, fontWeight:"600" }}>Yassine</span></div>
       </div>
     </div>
