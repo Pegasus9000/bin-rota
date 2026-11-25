@@ -15,6 +15,7 @@ const FIREBASE_CONFIG = {
 const DB_PATH           = "binrota";
 const ADMIN_PIN         = "1997";
 const REPORTS_TO_URGENT = 2;
+const STREAK_START      = new Date(2026, 10, 25).getTime(); // streak launch day: older full-bin reports were never stored
 
 const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif`;
 
@@ -176,6 +177,10 @@ export default function BinRota() {
   const [schedule,  setSchedule]  = useState(DEFAULT_STATE.schedule);
   const [forcedCurrentId, setForcedCurrentId] = useState(null);
   const [forcedNextId,    setForcedNextId]    = useState(null);
+  const [lastFullTs,      setLastFullTs]      = useState(null);
+  const [thanked, setThanked] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("binrota-thanked")) || []; } catch(e) { return []; }
+  });
 
   const [editingId,   setEditingId]   = useState(null);
   const [editingName, setEditingName] = useState("");
@@ -203,8 +208,8 @@ export default function BinRota() {
   const [showFairnessStats,   setShowFairnessStats]   = useState(false);
   const [showWA,              setShowWA]              = useState(false);
 
-  const stateRef = useRef({ residents, history, alerts, schedule, forcedCurrentId, forcedNextId });
-  stateRef.current = { residents, history, alerts, schedule, forcedCurrentId, forcedNextId };
+  const stateRef = useRef({ residents, history, alerts, schedule, forcedCurrentId, forcedNextId, lastFullTs });
+  stateRef.current = { residents, history, alerts, schedule, forcedCurrentId, forcedNextId, lastFullTs };
   const lastWriteId   = useRef(null);
   const justDoneTimer = useRef(null);
 
@@ -225,6 +230,7 @@ export default function BinRota() {
       if (data.schedule && typeof data.schedule === "object") setSchedule(data.schedule);
       setForcedCurrentId(data.forcedCurrentId ?? null);
       setForcedNextId(data.forcedNextId ?? null);
+      setLastFullTs(data.lastFullTs ?? null);
       setConnStatus("live");
     }, (e) => { console.error(e); setConnStatus("error"); });
     return () => off(dbRef, "value", unsub);
@@ -244,6 +250,7 @@ export default function BinRota() {
     if (patch.schedule  !== undefined) setSchedule(patch.schedule);
     if (patch.forcedCurrentId !== undefined) setForcedCurrentId(patch.forcedCurrentId);
     if (patch.forcedNextId    !== undefined) setForcedNextId(patch.forcedNextId);
+    if (patch.lastFullTs      !== undefined) setLastFullTs(patch.lastFullTs);
   }
 
   function onPinSuccess() {
@@ -268,6 +275,7 @@ export default function BinRota() {
   })();
   const urgentAlerts = alerts.filter(a => Array.isArray(a.reports) && a.reports.length >= REPORTS_TO_URGENT);
   const overdue = isOverdue(history);
+  const streakDays = alerts.length ? 0 : Math.floor((Date.now() - Math.max(lastFullTs || 0, STREAK_START)) / 86400000);
 
   // Messages
   function buildDoneMessage(personName, binLabel, upNextName) {
@@ -375,8 +383,16 @@ export default function BinRota() {
       if (existing.reports?.includes(name)) return;
       saveState({ alerts: alerts.map(a => a.binType === binTypeId ? { ...a, reports: [...(a.reports||[]), name] } : a) });
     } else {
-      saveState({ alerts: [...alerts, { id: Date.now(), binType: binTypeId, binLabel: bin.label, reports: [name], ts: Date.now() }] });
+      saveState({ alerts: [...alerts, { id: Date.now(), binType: binTypeId, binLabel: bin.label, reports: [name], ts: Date.now() }], lastFullTs: Date.now() });
     }
+  }
+  // One thank-you per entry per phone (no accounts, so the device remembers).
+  function thankEntry(id) {
+    if (thanked.includes(id)) return;
+    saveState({ history: history.map(e => e.id === id ? { ...e, thanks: (e.thanks || 0) + 1 } : e) });
+    const next = [...thanked, id].slice(-200);
+    setThanked(next);
+    try { localStorage.setItem("binrota-thanked", JSON.stringify(next)); } catch(e) {}
   }
   function startEdit(r) { setEditingId(r.id); setEditingName(r.name); }
   function cancelEdit() { setEditingId(null); setEditingName(""); }
@@ -767,6 +783,19 @@ export default function BinRota() {
               <div style={{ ...cardStyle, padding:"24px", textAlign:"center", color:T.textFaint, fontSize:"15px" }}>No active residents.</div>
             )}
 
+            {/* HOUSE STREAK — hidden while a bin is reported full (the red buttons say enough) */}
+            {alerts.length === 0 && (
+              <div style={{ ...cardStyle, padding:"12px 16px", display:"flex", alignItems:"center", gap:"12px" }}>
+                <div style={{ fontSize:"26px" }}>{streakDays > 0 ? "🔥" : "🌱"}</div>
+                <div>
+                  <div style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>
+                    {streakDays > 0 ? `${streakDays} day${streakDays === 1 ? "" : "s"} with no full-bin reports` : "New house streak starts today"}
+                  </div>
+                  <div style={{ fontSize:"12px", color:T.textFaint, marginTop:"2px" }}>Everyone keeps this going. It resets when a bin is reported full.</div>
+                </div>
+              </div>
+            )}
+
             {/* TWO BIG BUTTONS — the only actions */}
             <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
               {bins.map(bin => {
@@ -931,6 +960,7 @@ export default function BinRota() {
                                 <span style={{ fontSize:"15px", fontWeight:"700", color:T.text }}>{r.name}</span>
                                 {isCurrent && <span style={{ fontSize:"10px", background:T.currentAccentBg, color:T.currentAccent, padding:"2px 7px", borderRadius:"20px", fontWeight:"700" }}>Current</span>}
                                 {!r.active && <span style={{ fontSize:"10px", background:T.pillBg, color:T.textFaint, padding:"2px 7px", borderRadius:"20px" }}>✈️ Away</span>}
+                                {r.active && turns === 0 && (r.baseline || 0) > 0 && <span style={{ fontSize:"10px", background:T.pillBg, color:T.textMuted, padding:"2px 7px", borderRadius:"20px", fontWeight:"600" }}>🆕 Joined, started level</span>}
                               </div>
                               <div style={{ fontSize:"11px", color:T.textFaint, marginTop:"1px" }}>Last: {lastEntry?.date||"Never"}</div>
                             </div>
@@ -1130,6 +1160,15 @@ export default function BinRota() {
                           </div>
                           <div style={{ fontSize:"12px", color:T.textFaint, marginTop:"2px" }}>{h.date}</div>
                         </div>
+                        {!h.skipped && !h.awayCredit && (() => {
+                          const done = thanked.includes(h.id);
+                          return (
+                            <button className="btn" onClick={() => thankEntry(h.id)} disabled={done} aria-label={`Thank ${h.personName}`}
+                              style={{ background:done?T.currentAccentBg:"transparent", color:done?T.currentAccent:T.textMuted, padding:"5px 11px", fontSize:"13px", fontWeight:"600", border:`1px solid ${done?T.currentAccent:T.border}`, borderRadius:"20px", flexShrink:0 }}>
+                              👏 {h.thanks ? h.thanks : "Thanks"}
+                            </button>
+                          );
+                        })()}
                         {isAdmin ? (
                           <button className="btn" onClick={() => saveState({ history: history.filter(e => e.id !== h.id) })}
                             style={{ background:"transparent", color:T.removeBtnText, padding:"4px 8px", fontSize:"15px", opacity:0.6, flexShrink:0 }}>✕</button>
@@ -1147,7 +1186,7 @@ export default function BinRota() {
       </div>
 
       <div style={{ textAlign:"center", padding:"24px 20px 32px", borderTop:`1px solid ${T.footerBorder}`, marginTop:"8px" }}>
-        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.5</span></div>
+        <div style={{ fontSize:"12px", color:T.footerText, marginBottom:"6px" }}>Real-time sync · data stored securely in Firebase · <span style={{ fontWeight:"600" }}>v4.6</span></div>
         <div style={{ fontSize:"13px", color:T.textFaint }}>Made with ♥ by <span style={{ color:T.currentAccent, fontWeight:"600" }}>Yassine</span></div>
       </div>
     </div>
